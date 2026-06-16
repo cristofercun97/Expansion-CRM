@@ -1,0 +1,1563 @@
+// ✅ BIBLIA FINAL (MISMAS REGLAS) — SOLO PATCH DONDE HACE FALTA
+// Regla sagrada: NO se toca lo antiguo. Solo se mejora donde debe ir.
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -------------------------------------------------------------------------
+    // HELPERS GLOBALES
+    // Funciones reutilizables para auth, ownership y roles.
+    // Fuente de verdad de admin: users/{uid}.role en Firestore (no datos del cliente).
+    // -------------------------------------------------------------------------
+
+    // Usuario autenticado en Firebase Auth.
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // El documento pertenece al uid autenticado.
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // Perfil del usuario autenticado en users/{uid}.
+    // SECURITY: solo invocar cuando isSignedIn() == true.
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Admin verificado contra Firestore, no contra campos enviados por el cliente.
+    function isAdmin() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        getUserData().role == 'admin';
+    }
+
+    // Email verificado según token de Auth (fuente confiable).
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    // Campos prohibidos en creates públicos de prospectos (anti-escalada).
+    function hasForbiddenProspectFields(data) {
+      return data.keys().hasAny(['role', 'admin', 'uid', 'isAdmin']);
+    }
+
+    // Validación mínima de alta pública de prospecto (formulario landing legacy).
+    function isValidPublicProspectCreate() {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'leaderId',
+        'source',
+        'fullName',
+        'phone',
+        'email',
+        'city',
+        'status',
+        'notes',
+        'createdAt',
+        'updatedAt',
+      ];
+
+      return data.keys().hasOnly(allowedKeys) &&
+        !hasForbiddenProspectFields(data) &&
+        data.createdAt == request.time &&
+        data.updatedAt == request.time &&
+        data.leaderId is string &&
+        data.leaderId.size() > 0 &&
+        data.fullName is string &&
+        data.fullName.size() > 0 &&
+        data.phone is string &&
+        data.phone.size() > 0 &&
+        data.source is string &&
+        data.status == 'new' &&
+        (!('email' in data) || data.email is string) &&
+        (!('city' in data) || data.city is string) &&
+        (!('notes' in data) || data.notes is string);
+    }
+
+    // Validación de prospecto desde landing pública de Presentación (/p/:slug).
+    function isValidPresentationLandingProspectCreate() {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'ownerUid',
+        'leaderId',
+        'landingSlug',
+        'source',
+        'name',
+        'whatsapp',
+        'interest',
+        'message',
+        'whatsappGroupUrl',
+        'status',
+        'createdAt',
+        'updatedAt',
+      ];
+
+      return data.keys().hasOnly(allowedKeys) &&
+        !hasForbiddenProspectFields(data) &&
+        data.createdAt == request.time &&
+        data.updatedAt == request.time &&
+        data.ownerUid is string &&
+        data.ownerUid.size() > 0 &&
+        data.leaderId is string &&
+        data.leaderId == data.ownerUid &&
+        data.landingSlug is string &&
+        data.landingSlug.size() > 0 &&
+        data.source == 'presentation_landing' &&
+        data.status == 'new' &&
+        (!('name' in data) || (data.name is string && data.name.size() >= 2)) &&
+        (!('whatsapp' in data) || (data.whatsapp is string && data.whatsapp.size() >= 6)) &&
+        (!('interest' in data) || (data.interest is string && data.interest.size() > 0)) &&
+        (!('message' in data) || (data.message is string && data.message.size() <= 500)) &&
+        (!('whatsappGroupUrl' in data) || (data.whatsappGroupUrl is string && data.whatsappGroupUrl.size() > 0)) &&
+        (
+          ('name' in data && data.name.size() >= 2) ||
+          ('whatsapp' in data && data.whatsapp.size() >= 6) ||
+          ('interest' in data && data.interest.size() > 0) ||
+          ('message' in data && data.message.size() > 0)
+        );
+    }
+
+    function isProspectOwner() {
+      return isSignedIn() &&
+        isEmailVerified() &&
+        (
+          resource.data.leaderId == request.auth.uid ||
+          resource.data.ownerUid == request.auth.uid
+        );
+    }
+
+    function isValidProspectOwnerStatusUpdate() {
+      let data = request.resource.data;
+      let allowedStatuses = [
+        'new',
+        'contacted',
+        'following',
+        'interested',
+        'not_interested',
+        'converted',
+      ];
+
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']) &&
+        data.status is string &&
+        data.status in allowedStatuses &&
+        data.updatedAt == request.time;
+    }
+
+    function isValidManualContactCreate() {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'ownerUid',
+        'leaderId',
+        'landingSlug',
+        'source',
+        'name',
+        'whatsapp',
+        'interest',
+        'message',
+        'status',
+        'createdAt',
+        'updatedAt',
+      ];
+      let allowedStatuses = [
+        'new',
+        'contacted',
+        'following',
+        'interested',
+        'not_interested',
+        'converted',
+      ];
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        data.keys().hasOnly(allowedKeys) &&
+        !hasForbiddenProspectFields(data) &&
+        data.createdAt == request.time &&
+        data.updatedAt == request.time &&
+        data.ownerUid is string &&
+        data.ownerUid == request.auth.uid &&
+        data.leaderId is string &&
+        data.leaderId == request.auth.uid &&
+        data.landingSlug == 'manual' &&
+        data.source == 'manual_contact' &&
+        data.name is string &&
+        data.name.size() >= 2 &&
+        data.whatsapp is string &&
+        data.whatsapp.size() >= 6 &&
+        data.status is string &&
+        data.status in allowedStatuses &&
+        (!('interest' in data) || data.interest is string) &&
+        (!('message' in data) || (data.message is string && data.message.size() <= 500));
+    }
+
+    function isTeamOwnedByAuth(teamId) {
+      return isSignedIn() &&
+        isEmailVerified() &&
+        teamId is string &&
+        teamId.size() > 0 &&
+        exists(/databases/$(database)/documents/teams/$(teamId)) &&
+        get(/databases/$(database)/documents/teams/$(teamId)).data.ownerUid == request.auth.uid &&
+        get(/databases/$(database)/documents/teams/$(teamId)).data.status == 'active';
+    }
+
+    function getAuthHomeTeamId() {
+      let user = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+
+      return user.keys().hasAll(['homeTeamId']) &&
+        user.homeTeamId is string &&
+        user.homeTeamId.size() > 0
+        ? user.homeTeamId
+        : '';
+    }
+
+    function isHomeTeamOwner(ownerUid) {
+      let homeTeamId = getAuthHomeTeamId();
+
+      return homeTeamId.size() > 0 &&
+        exists(/databases/$(database)/documents/teams/$(homeTeamId)) &&
+        get(/databases/$(database)/documents/teams/$(homeTeamId)).data.ownerUid == ownerUid;
+    }
+
+    function isLegacyAcademyContentFromHomeTeamOwner() {
+      return isHomeTeamOwner(resource.data.ownerUid) &&
+        isActiveTeamMember(getAuthHomeTeamId()) &&
+        (
+          !('teamId' in resource.data) ||
+          !(resource.data.teamId is string) ||
+          resource.data.teamId.size() == 0
+        );
+    }
+
+    function isHomeTeamLeaderProfile(userUid) {
+      let homeTeamId = getAuthHomeTeamId();
+
+      return homeTeamId.size() > 0 &&
+        isActiveTeamMember(homeTeamId) &&
+        get(/databases/$(database)/documents/teams/$(homeTeamId)).data.ownerUid == userUid;
+    }
+
+    function isMyAssignedLeader(userUid) {
+      let user = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        user.keys().hasAll(['leaderId']) &&
+        user.leaderId is string &&
+        user.leaderId.size() > 0 &&
+        user.leaderId == userUid;
+    }
+
+    function canReadAcademyMaterialFromHomeTeamLeaderOwnedTeam() {
+      let homeTeamId = getAuthHomeTeamId();
+
+      return homeTeamId.size() > 0 &&
+        isActiveTeamMember(homeTeamId) &&
+        isHomeTeamOwner(resource.data.ownerUid) &&
+        ('teamId' in resource.data) &&
+        resource.data.teamId is string &&
+        resource.data.teamId.size() > 0 &&
+        resource.data.teamId != homeTeamId;
+    }
+
+    function canReadAcademyMaterial() {
+      return isSignedIn() &&
+        isEmailVerified() &&
+        (
+          resource.data.ownerUid == request.auth.uid ||
+          (
+            ('teamId' in resource.data) &&
+            resource.data.teamId is string &&
+            resource.data.teamId.size() > 0 &&
+            isActiveTeamMember(resource.data.teamId)
+          ) ||
+          isLegacyAcademyContentFromHomeTeamOwner() ||
+          canReadAcademyMaterialFromHomeTeamLeaderOwnedTeam()
+        );
+    }
+
+    function isAcademyMaterialManager() {
+      return isSignedIn() &&
+        isEmailVerified() &&
+        (
+          resource.data.ownerUid == request.auth.uid ||
+          (
+            ('teamId' in resource.data) &&
+            resource.data.teamId is string &&
+            resource.data.teamId.size() > 0 &&
+            isTeamOwnedByAuth(resource.data.teamId)
+          )
+        );
+    }
+
+    function isValidAcademyMaterialCreate() {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'ownerUid',
+        'teamId',
+        'title',
+        'description',
+        'type',
+        'url',
+        'imageUrl',
+        'isActive',
+        'createdAt',
+        'updatedAt',
+      ];
+      let allowedTypes = ['presentation', 'pdf', 'video'];
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        data.keys().hasOnly(allowedKeys) &&
+        data.createdAt == request.time &&
+        data.updatedAt == request.time &&
+        data.ownerUid is string &&
+        data.ownerUid == request.auth.uid &&
+        data.teamId is string &&
+        data.teamId.size() > 0 &&
+        isTeamOwnedByAuth(data.teamId) &&
+        data.title is string &&
+        data.title.size() >= 3 &&
+        data.title.size() <= 200 &&
+        data.description is string &&
+        data.description.size() <= 1000 &&
+        data.type is string &&
+        data.type in allowedTypes &&
+        data.url is string &&
+        data.url.size() > 0 &&
+        data.url.size() <= 2048 &&
+        data.url.matches('^https?://.+') &&
+        data.imageUrl is string &&
+        data.imageUrl.size() <= 2048 &&
+        (data.imageUrl.size() == 0 || data.imageUrl.matches('^https?://.+')) &&
+        data.isActive is bool;
+    }
+
+    function isAcademyMaterialOwner() {
+      return isAcademyMaterialManager();
+    }
+
+    function isValidAcademyMaterialUpdate() {
+      let data = request.resource.data;
+      let allowedTypes = ['presentation', 'pdf', 'video'];
+
+      return isAcademyMaterialManager() &&
+        data.ownerUid == resource.data.ownerUid &&
+        (
+          !('teamId' in resource.data) ||
+          data.teamId == resource.data.teamId
+        ) &&
+        data.createdAt == resource.data.createdAt &&
+        data.updatedAt == request.time &&
+        data.title is string &&
+        data.title.size() >= 3 &&
+        data.title.size() <= 200 &&
+        data.description is string &&
+        data.description.size() <= 1000 &&
+        data.type is string &&
+        data.type in allowedTypes &&
+        data.url is string &&
+        data.url.size() > 0 &&
+        data.url.size() <= 2048 &&
+        data.url.matches('^https?://.+') &&
+        data.imageUrl is string &&
+        data.imageUrl.size() <= 2048 &&
+        (data.imageUrl.size() == 0 || data.imageUrl.matches('^https?://.+')) &&
+        data.isActive is bool;
+    }
+
+    function isValidAcademyMaterialLegacyTeamIdSync() {
+      let data = request.resource.data;
+      let previous = resource.data;
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      let teamId = data.teamId;
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        previous.ownerUid == request.auth.uid &&
+        data.ownerUid == previous.ownerUid &&
+        (
+          !('teamId' in previous) ||
+          !(previous.teamId is string) ||
+          previous.teamId.size() == 0
+        ) &&
+        changed.hasOnly(['teamId', 'updatedAt']) &&
+        data.updatedAt == request.time &&
+        teamId is string &&
+        teamId.size() > 0 &&
+        isTeamOwnedByAuth(teamId);
+    }
+
+    function isValidAcademyTestQuestion(question) {
+      return question.keys().hasOnly(['questionText', 'options', 'correctOptionIndex']) &&
+        question.questionText is string &&
+        question.questionText.size() > 0 &&
+        question.questionText.size() <= 500 &&
+        question.options is list &&
+        question.options.size() == 4 &&
+        question.options[0] is string &&
+        question.options[0].size() > 0 &&
+        question.options[1] is string &&
+        question.options[1].size() > 0 &&
+        question.options[2] is string &&
+        question.options[2].size() > 0 &&
+        question.options[3] is string &&
+        question.options[3].size() > 0 &&
+        question.correctOptionIndex is int &&
+        question.correctOptionIndex >= 0 &&
+        question.correctOptionIndex <= 3;
+    }
+
+    function isValidAcademyTestQuestions(questions) {
+      return questions is list &&
+        questions.size() == 5 &&
+        isValidAcademyTestQuestion(questions[0]) &&
+        isValidAcademyTestQuestion(questions[1]) &&
+        isValidAcademyTestQuestion(questions[2]) &&
+        isValidAcademyTestQuestion(questions[3]) &&
+        isValidAcademyTestQuestion(questions[4]);
+    }
+
+    function canReadAcademyTest() {
+      return isSignedIn() &&
+        isEmailVerified() &&
+        (
+          resource.data.ownerUid == request.auth.uid ||
+          (
+            ('teamId' in resource.data) &&
+            resource.data.teamId is string &&
+            resource.data.teamId.size() > 0 &&
+            isActiveTeamMember(resource.data.teamId)
+          ) ||
+          isLegacyAcademyContentFromHomeTeamOwner() ||
+          canReadAcademyMaterialFromHomeTeamLeaderOwnedTeam()
+        );
+    }
+
+    function isAcademyTestManager() {
+      return isSignedIn() &&
+        isEmailVerified() &&
+        (
+          resource.data.ownerUid == request.auth.uid ||
+          (
+            ('teamId' in resource.data) &&
+            resource.data.teamId is string &&
+            resource.data.teamId.size() > 0 &&
+            isTeamOwnedByAuth(resource.data.teamId)
+          )
+        );
+    }
+
+    function isValidAcademyTestCreate() {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'ownerUid',
+        'teamId',
+        'materialId',
+        'title',
+        'questions',
+        'isActive',
+        'createdAt',
+        'updatedAt',
+      ];
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        data.keys().hasOnly(allowedKeys) &&
+        data.createdAt == request.time &&
+        data.updatedAt == request.time &&
+        data.ownerUid is string &&
+        data.ownerUid == request.auth.uid &&
+        data.teamId is string &&
+        data.teamId.size() > 0 &&
+        isTeamOwnedByAuth(data.teamId) &&
+        data.materialId is string &&
+        data.materialId.size() > 0 &&
+        exists(/databases/$(database)/documents/academyMaterials/$(data.materialId)) &&
+        get(/databases/$(database)/documents/academyMaterials/$(data.materialId)).data.ownerUid == request.auth.uid &&
+        (
+          get(/databases/$(database)/documents/academyMaterials/$(data.materialId)).data.teamId == data.teamId ||
+          !('teamId' in get(/databases/$(database)/documents/academyMaterials/$(data.materialId)).data)
+        ) &&
+        data.title is string &&
+        data.title.size() >= 3 &&
+        data.title.size() <= 200 &&
+        isValidAcademyTestQuestions(data.questions) &&
+        data.isActive is bool;
+    }
+
+    function isValidAcademyTestUpdate() {
+      let data = request.resource.data;
+
+      return isAcademyTestManager() &&
+        data.ownerUid == resource.data.ownerUid &&
+        data.materialId == resource.data.materialId &&
+        (
+          !('teamId' in resource.data) ||
+          data.teamId == resource.data.teamId
+        ) &&
+        data.createdAt == resource.data.createdAt &&
+        data.updatedAt == request.time &&
+        data.title is string &&
+        data.title.size() >= 3 &&
+        data.title.size() <= 200 &&
+        isValidAcademyTestQuestions(data.questions) &&
+        data.isActive is bool;
+    }
+
+    function isValidAcademyTestLegacyTeamIdSync() {
+      let data = request.resource.data;
+      let previous = resource.data;
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      let teamId = data.teamId;
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        previous.ownerUid == request.auth.uid &&
+        data.ownerUid == previous.ownerUid &&
+        data.materialId == previous.materialId &&
+        (
+          !('teamId' in previous) ||
+          !(previous.teamId is string) ||
+          previous.teamId.size() == 0
+        ) &&
+        changed.hasOnly(['teamId', 'updatedAt']) &&
+        data.updatedAt == request.time &&
+        teamId is string &&
+        teamId.size() > 0 &&
+        isTeamOwnedByAuth(teamId);
+    }
+
+    function isAcademyTestOwner() {
+      return isAcademyTestManager();
+    }
+
+    function isValidAcademyTestAttemptAnswer(answer) {
+      return answer.keys().hasOnly([
+          'questionIndex',
+          'selectedOptionIndex',
+          'correctOptionIndex',
+          'isCorrect',
+        ]) &&
+        answer.questionIndex is int &&
+        answer.questionIndex >= 0 &&
+        answer.questionIndex <= 4 &&
+        answer.selectedOptionIndex is int &&
+        answer.selectedOptionIndex >= 0 &&
+        answer.selectedOptionIndex <= 3 &&
+        answer.correctOptionIndex is int &&
+        answer.correctOptionIndex >= 0 &&
+        answer.correctOptionIndex <= 3 &&
+        answer.isCorrect is bool;
+    }
+
+    function isValidAcademyTestAttemptCreate() {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'teamId',
+        'materialId',
+        'testId',
+        'memberUid',
+        'memberName',
+        'memberEmail',
+        'answers',
+        'correctAnswers',
+        'totalQuestions',
+        'score',
+        'submittedAt',
+        'createdAt',
+      ];
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        data.keys().hasOnly(allowedKeys) &&
+        data.createdAt == request.time &&
+        data.submittedAt == request.time &&
+        data.memberUid == request.auth.uid &&
+        data.teamId is string &&
+        data.teamId.size() > 0 &&
+        isActiveTeamMember(data.teamId) &&
+        data.materialId is string &&
+        data.materialId.size() > 0 &&
+        data.testId is string &&
+        data.testId.size() > 0 &&
+        data.memberName is string &&
+        data.memberName.size() > 0 &&
+        data.memberEmail is string &&
+        data.memberEmail.size() > 0 &&
+        data.totalQuestions == 5 &&
+        data.score is int &&
+        data.score >= 0 &&
+        data.score <= 100 &&
+        data.correctAnswers is int &&
+        data.correctAnswers >= 0 &&
+        data.correctAnswers <= 5 &&
+        data.answers is list &&
+        data.answers.size() == 5 &&
+        isValidAcademyTestAttemptAnswer(data.answers[0]) &&
+        isValidAcademyTestAttemptAnswer(data.answers[1]) &&
+        isValidAcademyTestAttemptAnswer(data.answers[2]) &&
+        isValidAcademyTestAttemptAnswer(data.answers[3]) &&
+        isValidAcademyTestAttemptAnswer(data.answers[4]);
+    }
+
+    function canReadAcademyTestAttempt() {
+      return isSignedIn() &&
+        isEmailVerified() &&
+        (
+          resource.data.memberUid == request.auth.uid ||
+          isTeamOwnedByAuth(resource.data.teamId)
+        );
+    }
+
+    function isAcademyEngagementActiveMember(teamId) {
+      let memberDocId = teamId + '_' + request.auth.uid;
+
+      return isSignedIn() &&
+        teamId is string &&
+        teamId.size() > 0 &&
+        exists(/databases/$(database)/documents/teamMembers/$(memberDocId)) &&
+        get(/databases/$(database)/documents/teamMembers/$(memberDocId)).data.memberUid == request.auth.uid &&
+        get(/databases/$(database)/documents/teamMembers/$(memberDocId)).data.teamId == teamId &&
+        get(/databases/$(database)/documents/teamMembers/$(memberDocId)).data.status == 'active';
+    }
+
+    function isAcademyEngagementTeamOwner(teamId) {
+      return isSignedIn() &&
+        teamId is string &&
+        teamId.size() > 0 &&
+        exists(/databases/$(database)/documents/teams/$(teamId)) &&
+        get(/databases/$(database)/documents/teams/$(teamId)).data.ownerUid == request.auth.uid;
+    }
+
+    function canWriteAcademyMaterialEngagement(teamId) {
+      return isAcademyEngagementActiveMember(teamId) || isAcademyEngagementTeamOwner(teamId);
+    }
+
+    function isValidAcademyMaterialEngagementCreate(engagementId) {
+      let data = request.resource.data;
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        data.memberUid == request.auth.uid &&
+        data.teamId is string &&
+        data.teamId.size() > 0 &&
+        data.materialId is string &&
+        data.materialId.size() > 0 &&
+        data.openCount is number &&
+        data.openCount >= 1 &&
+        engagementId == data.teamId + '_' + data.materialId + '_' + request.auth.uid &&
+        canWriteAcademyMaterialEngagement(data.teamId);
+    }
+
+    function isValidAcademyMaterialEngagementUpdate(engagementId) {
+      let data = request.resource.data;
+      let previous = resource.data;
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        data.memberUid == request.auth.uid &&
+        previous.memberUid == request.auth.uid &&
+        data.teamId is string &&
+        data.teamId.size() > 0 &&
+        data.materialId is string &&
+        data.materialId.size() > 0 &&
+        data.teamId == previous.teamId &&
+        data.materialId == previous.materialId &&
+        data.openCount is number &&
+        data.openCount >= 1 &&
+        engagementId == data.teamId + '_' + data.materialId + '_' + request.auth.uid &&
+        canWriteAcademyMaterialEngagement(data.teamId);
+    }
+
+    function canReadAcademyMaterialEngagement() {
+      return (isSignedIn() && resource.data.memberUid == request.auth.uid) ||
+        (
+          isSignedIn() &&
+          resource.data.keys().hasAll(['teamId']) &&
+          isAcademyEngagementTeamOwner(resource.data.teamId)
+        );
+    }
+
+    function isValidActionTaskCreate() {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'ownerUid',
+        'title',
+        'description',
+        'status',
+        'priority',
+        'dueDate',
+        'createdAt',
+        'updatedAt',
+      ];
+      let allowedStatuses = ['pending', 'in_progress', 'completed'];
+      let allowedPriorities = ['low', 'medium', 'high'];
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        data.keys().hasOnly(allowedKeys) &&
+        data.createdAt == request.time &&
+        data.updatedAt == request.time &&
+        data.ownerUid is string &&
+        data.ownerUid == request.auth.uid &&
+        data.title is string &&
+        data.title.size() >= 3 &&
+        data.title.size() <= 200 &&
+        data.description is string &&
+        data.description.size() <= 300 &&
+        data.status is string &&
+        data.status in allowedStatuses &&
+        data.priority is string &&
+        data.priority in allowedPriorities &&
+        data.dueDate is string &&
+        data.dueDate.size() <= 32 &&
+        (data.dueDate.size() == 0 || data.dueDate.matches('^\\d{4}-\\d{2}-\\d{2}$'));
+    }
+
+    function isActionTaskOwner() {
+      return isSignedIn() &&
+        isEmailVerified() &&
+        resource.data.ownerUid == request.auth.uid;
+    }
+
+    function isValidActionTaskStatusUpdate() {
+      let data = request.resource.data;
+      let allowedStatuses = ['pending', 'in_progress', 'completed'];
+
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']) &&
+        data.status is string &&
+        data.status in allowedStatuses &&
+        data.updatedAt == request.time;
+    }
+
+    function isValidTeamCreate() {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'ownerUid',
+        'name',
+        'inviteCode',
+        'status',
+        'createdAt',
+        'updatedAt',
+      ];
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        data.keys().hasOnly(allowedKeys) &&
+        data.createdAt == request.time &&
+        data.updatedAt == request.time &&
+        data.ownerUid is string &&
+        data.ownerUid == request.auth.uid &&
+        data.name is string &&
+        data.name.size() >= 3 &&
+        data.name.size() <= 120 &&
+        data.inviteCode is string &&
+        data.inviteCode.size() >= 6 &&
+        data.inviteCode.size() <= 32 &&
+        data.status == 'active';
+    }
+
+    function isTeamOwner() {
+      return isSignedIn() &&
+        isEmailVerified() &&
+        resource.data.ownerUid == request.auth.uid;
+    }
+
+    function isValidTeamNameUpdate() {
+      let data = request.resource.data;
+
+      return isTeamOwner() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'updatedAt']) &&
+        data.ownerUid == resource.data.ownerUid &&
+        data.inviteCode == resource.data.inviteCode &&
+        data.status == resource.data.status &&
+        data.createdAt == resource.data.createdAt &&
+        data.name is string &&
+        data.name.size() >= 3 &&
+        data.name.size() <= 60 &&
+        data.updatedAt == request.time;
+    }
+
+    function isValidLeaderInviteCodeCreate(inviteCode) {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'code',
+        'ownerUid',
+        'teamId',
+        'teamName',
+        'isActive',
+        'createdAt',
+        'updatedAt',
+      ];
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        data.keys().hasOnly(allowedKeys) &&
+        data.createdAt == request.time &&
+        data.updatedAt == request.time &&
+        data.code is string &&
+        data.code == inviteCode &&
+        data.ownerUid is string &&
+        data.ownerUid == request.auth.uid &&
+        data.teamId is string &&
+        data.teamId.size() > 0 &&
+        data.isActive == true &&
+        (!('teamName' in data) || (
+          data.teamName is string &&
+          data.teamName.size() >= 3 &&
+          data.teamName.size() <= 120
+        ));
+    }
+
+    function isLeaderInviteCodeOwner() {
+      return isSignedIn() &&
+        isEmailVerified() &&
+        resource.data.ownerUid == request.auth.uid;
+    }
+
+    function isValidTeamMemberOwnerCreate() {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'teamId',
+        'ownerUid',
+        'memberUid',
+        'role',
+        'status',
+        'joinedAt',
+        'createdAt',
+        'updatedAt',
+      ];
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        data.keys().hasOnly(allowedKeys) &&
+        data.createdAt == request.time &&
+        data.updatedAt == request.time &&
+        data.joinedAt == request.time &&
+        data.teamId is string &&
+        data.teamId.size() > 0 &&
+        data.ownerUid is string &&
+        data.ownerUid == request.auth.uid &&
+        data.memberUid is string &&
+        data.memberUid == request.auth.uid &&
+        data.role == 'owner' &&
+        data.status == 'active';
+    }
+
+    function isValidTeamMemberMemberCreate() {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'teamId',
+        'ownerUid',
+        'memberUid',
+        'memberName',
+        'memberEmail',
+        'role',
+        'status',
+        'joinedAt',
+        'createdAt',
+        'updatedAt',
+      ];
+
+      return isSignedIn() &&
+        data.keys().hasOnly(allowedKeys) &&
+        data.createdAt == request.time &&
+        data.updatedAt == request.time &&
+        data.joinedAt == request.time &&
+        data.teamId is string &&
+        data.teamId.size() > 0 &&
+        data.ownerUid is string &&
+        data.ownerUid.size() > 0 &&
+        data.memberUid is string &&
+        data.memberUid == request.auth.uid &&
+        data.role == 'member' &&
+        data.status == 'active' &&
+        (
+          !('memberName' in data) ||
+          (
+            data.memberName is string &&
+            data.memberName.size() > 0 &&
+            data.memberName.size() <= 120
+          )
+        ) &&
+        (
+          !('memberEmail' in data) ||
+          (
+            data.memberEmail is string &&
+            data.memberEmail.size() > 0 &&
+            data.memberEmail.size() <= 320 &&
+            data.memberEmail == request.auth.token.email
+          )
+        ) &&
+        exists(/databases/$(database)/documents/teams/$(data.teamId)) &&
+        get(/databases/$(database)/documents/teams/$(data.teamId)).data.ownerUid == data.ownerUid &&
+        get(/databases/$(database)/documents/teams/$(data.teamId)).data.status == 'active';
+    }
+
+    function isTeamMemberSelfOrOwner() {
+      return isSignedIn() &&
+        isEmailVerified() &&
+        (
+          resource.data.memberUid == request.auth.uid ||
+          resource.data.ownerUid == request.auth.uid
+        );
+    }
+
+    function isActiveTeamMember(teamId) {
+      return isSignedIn() &&
+        isEmailVerified() &&
+        exists(/databases/$(database)/documents/teamMembers/$(teamId + '_' + request.auth.uid)) &&
+        get(/databases/$(database)/documents/teamMembers/$(teamId + '_' + request.auth.uid)).data.memberUid == request.auth.uid &&
+        get(/databases/$(database)/documents/teamMembers/$(teamId + '_' + request.auth.uid)).data.status == 'active';
+    }
+
+    function isValidUserActivationStatusSelfUpdate(userUid) {
+      // ⚠️ CRÍTICO — permite al usuario pasar activationStatus → pending al solicitar upgrade.
+      // Aplica a role user Y member. No restringir role aquí sin migrar datos existentes.
+      let data = request.resource.data;
+      let previous = resource.data;
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+
+      return isOwner(userUid) &&
+        isEmailVerified() &&
+        data.role == previous.role &&
+        changed.hasOnly(['activationStatus', 'updatedAt']) &&
+        data.activationStatus == 'pending' &&
+        data.updatedAt == request.time &&
+        (
+          !('activationStatus' in previous) ||
+          previous.activationStatus == 'none' ||
+          previous.activationStatus == 'rejected'
+        );
+    }
+
+    function isValidOwnedTeamIdSelfSync(userUid) {
+      let data = request.resource.data;
+      let previous = resource.data;
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      let ownedTeamId = data.ownedTeamId;
+
+      return isOwner(userUid) &&
+        isEmailVerified() &&
+        data.role == previous.role &&
+        previous.activationStatus == 'active' &&
+        data.activationStatus == 'active' &&
+        changed.hasOnly(['ownedTeamId', 'updatedAt']) &&
+        data.updatedAt == request.time &&
+        (
+          !('ownedTeamId' in previous) ||
+          !(previous.ownedTeamId is string) ||
+          previous.ownedTeamId.size() == 0
+        ) &&
+        ownedTeamId is string &&
+        ownedTeamId.size() > 0 &&
+        exists(/databases/$(database)/documents/teams/$(ownedTeamId)) &&
+        get(/databases/$(database)/documents/teams/$(ownedTeamId)).data.ownerUid == request.auth.uid &&
+        get(/databases/$(database)/documents/teams/$(ownedTeamId)).data.status == 'active';
+    }
+
+    function isValidGroupActivationRequestCreate() {
+      // ⚠️ CRÍTICO — upgrade 120€/año. Debe coincidir con requestGroupActivation() en group-activation.service.ts
+      let data = request.resource.data;
+      let allowedKeys = [
+        'requesterUid',
+        'requesterEmail',
+        'requesterName',
+        'currentHomeTeamId',
+        'amount',
+        'currency',
+        'status',
+        'requestedAt',
+      ];
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        data.keys().hasOnly(allowedKeys) &&
+        data.requesterUid == request.auth.uid &&
+        data.requesterEmail is string &&
+        data.requesterEmail.size() > 0 &&
+        data.requesterName is string &&
+        data.requesterName.size() > 0 &&
+        data.currentHomeTeamId is string &&
+        data.amount == 120 &&
+        data.currency == 'EUR' &&
+        data.status == 'pending' &&
+        data.requestedAt == request.time;
+    }
+
+    function isValidGroupActivationRequestReview() {
+      let data = request.resource.data;
+      let previous = resource.data;
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+
+      return isAdmin() &&
+        previous.status == 'pending' &&
+        data.requesterUid == previous.requesterUid &&
+        data.requesterEmail == previous.requesterEmail &&
+        data.requesterName == previous.requesterName &&
+        data.currentHomeTeamId == previous.currentHomeTeamId &&
+        data.amount == previous.amount &&
+        data.currency == previous.currency &&
+        data.requestedAt == previous.requestedAt &&
+        data.reviewedAt == request.time &&
+        data.reviewedBy == request.auth.uid &&
+        (
+          (
+            data.status == 'approved' &&
+            changed.hasOnly(['status', 'reviewedAt', 'reviewedBy'])
+          ) ||
+          (
+            data.status == 'rejected' &&
+            changed.hasOnly(['status', 'reviewedAt', 'reviewedBy', 'adminNote']) &&
+            data.adminNote is string
+          )
+        );
+    }
+
+    function isValidAdminGroupActivationUserUpdate(userUid) {
+      let data = request.resource.data;
+      let previous = resource.data;
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+
+      return isAdmin() &&
+        data.uid == userUid &&
+        previous.activationStatus == 'pending' &&
+        data.activationStatus == 'active' &&
+        data.role == previous.role &&
+        (
+          !('homeTeamId' in previous) ||
+          !('homeTeamId' in data) ||
+          data.homeTeamId == previous.homeTeamId
+        ) &&
+        data.ownedTeamId is string &&
+        data.ownedTeamId.size() > 0 &&
+        data.activationExpiresAt is timestamp &&
+        data.updatedAt == request.time &&
+        changed.hasOnly(['activationStatus', 'activationExpiresAt', 'ownedTeamId', 'updatedAt']);
+    }
+
+    function isValidAdminGroupActivationUserReject(userUid) {
+      let data = request.resource.data;
+      let previous = resource.data;
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+
+      return isAdmin() &&
+        data.uid == userUid &&
+        previous.activationStatus == 'pending' &&
+        data.activationStatus == 'rejected' &&
+        data.role == previous.role &&
+        data.updatedAt == request.time &&
+        changed.hasOnly(['activationStatus', 'updatedAt']);
+    }
+
+    function isValidAdminProvisionedTeamCreate() {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'ownerUid',
+        'name',
+        'inviteCode',
+        'status',
+        'createdAt',
+        'updatedAt',
+      ];
+
+      return isAdmin() &&
+        data.keys().hasOnly(allowedKeys) &&
+        data.createdAt == request.time &&
+        data.updatedAt == request.time &&
+        data.ownerUid is string &&
+        data.ownerUid.size() > 0 &&
+        data.name is string &&
+        data.name.size() >= 3 &&
+        data.name.size() <= 120 &&
+        data.inviteCode is string &&
+        data.inviteCode.size() >= 6 &&
+        data.inviteCode.size() <= 32 &&
+        data.status == 'active';
+    }
+
+    function isValidAdminProvisionedLeaderInviteCodeCreate(inviteCode) {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'code',
+        'ownerUid',
+        'teamId',
+        'teamName',
+        'isActive',
+        'createdAt',
+        'updatedAt',
+      ];
+
+      return isAdmin() &&
+        data.keys().hasOnly(allowedKeys) &&
+        data.createdAt == request.time &&
+        data.updatedAt == request.time &&
+        data.code is string &&
+        data.code == inviteCode &&
+        data.ownerUid is string &&
+        data.ownerUid.size() > 0 &&
+        data.teamId is string &&
+        data.teamId.size() > 0 &&
+        data.isActive == true &&
+        (!('teamName' in data) || (
+          data.teamName is string &&
+          data.teamName.size() >= 3 &&
+          data.teamName.size() <= 120
+        ));
+    }
+
+    function isValidAdminProvisionedTeamMemberOwnerCreate() {
+      // ⚠️ CRÍTICO — aprobación de activación crea team + teamMember en el mismo batch.
+      // NO exigir exists(team) aquí: en batch writes la validación puede fallar antes de materializar el team.
+      let data = request.resource.data;
+      let allowedKeys = [
+        'teamId',
+        'ownerUid',
+        'memberUid',
+        'role',
+        'status',
+        'joinedAt',
+        'createdAt',
+        'updatedAt',
+      ];
+
+      return isAdmin() &&
+        data.keys().hasOnly(allowedKeys) &&
+        data.createdAt == request.time &&
+        data.updatedAt == request.time &&
+        data.joinedAt == request.time &&
+        data.teamId is string &&
+        data.teamId.size() > 0 &&
+        data.ownerUid is string &&
+        data.ownerUid.size() > 0 &&
+        data.memberUid is string &&
+        data.memberUid == data.ownerUid &&
+        data.role == 'owner' &&
+        data.status == 'active';
+    }
+
+    function isValidInvitedMemberUserCreate(userUid) {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'uid',
+        'email',
+        'displayName',
+        'phone',
+        'photoURL',
+        'role',
+        'leaderId',
+        'homeTeamId',
+        'activationStatus',
+        'status',
+        'emailVerified',
+        'createdAt',
+        'updatedAt',
+      ];
+
+      return isOwner(userUid) &&
+        data.keys().hasOnly(allowedKeys) &&
+        data.uid == userUid &&
+        data.role == 'member' &&
+        data.homeTeamId is string &&
+        data.homeTeamId.size() > 0 &&
+        data.activationStatus == 'none' &&
+        data.status == 'pending_verification' &&
+        data.emailVerified == false &&
+        data.leaderId is string &&
+        data.leaderId.size() > 0 &&
+        data.createdAt == request.time &&
+        data.updatedAt == request.time &&
+        exists(/databases/$(database)/documents/teams/$(data.homeTeamId)) &&
+        get(/databases/$(database)/documents/teams/$(data.homeTeamId)).data.ownerUid == data.leaderId &&
+        get(/databases/$(database)/documents/teams/$(data.homeTeamId)).data.status == 'active';
+    }
+
+    // -------------------------------------------------------------------------
+    // users/{uid}
+    // PERMITE:
+    //   - create: solo el propio uid (registro).
+    //   - read: propio usuario o admin.
+    //   - update: propio usuario (sin cambiar role) o admin.
+    // BLOQUEA:
+    //   - Escalada de privilegios (role -> admin) por usuarios normales.
+    //   - Marcar emailVerified=true sin token verificado.
+    // RIESGO PROTEGIDO: escalada de privilegios / suplantación de admin.
+    // -------------------------------------------------------------------------
+    match /users/{uid} {
+      allow create: if (
+        isOwner(uid) &&
+        request.resource.data.uid == uid &&
+        request.resource.data.role == 'user' &&
+        request.resource.data.leaderId == uid &&
+        request.resource.data.status == 'pending_verification' &&
+        request.resource.data.emailVerified == false
+      ) || isValidInvitedMemberUserCreate(uid);
+
+      allow read: if isOwner(uid) || isAdmin() || isHomeTeamLeaderProfile(uid) || isMyAssignedLeader(uid);
+
+      allow update: if isAdmin() || isValidAdminGroupActivationUserUpdate(uid) || isValidAdminGroupActivationUserReject(uid) || isValidUserActivationStatusSelfUpdate(uid) || isValidOwnedTeamIdSelfSync(uid) || (
+        isOwner(uid) &&
+        // El usuario normal NO puede cambiar su role.
+        request.resource.data.role == resource.data.role &&
+        // No puede auto-declararse verificado sin token de Auth.
+        (request.resource.data.emailVerified == false || isEmailVerified()) &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['activationStatus', 'activationExpiresAt', 'ownedTeamId'])
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // leaders/{uid}
+    // PERMITE:
+    //   - create/read/update: dueño del perfil o admin.
+    // BLOQUEA:
+    //   - Lectura/escritura cruzada entre usuarios.
+    // NOTA:
+    //   Colección operativa legacy (antes "líder"). UI visible ya no usa ese término.
+    // TODO/SECURITY:
+    //   getLeaderBySlug() para landing pública requerirá reglas o lookup slugs/{slug} -> uid.
+    // -------------------------------------------------------------------------
+    match /leaders/{uid} {
+      allow create: if isOwner(uid) &&
+        request.resource.data.uid == uid;
+
+      allow read: if isOwner(uid) || isAdmin();
+
+      allow update: if isOwner(uid) || isAdmin();
+
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // leaderLandingPages/{uid}
+    // PERMITE:
+    //   - create: dueño (uid == auth.uid).
+    //   - read: landing publicada (isPublished == true), dueño o admin.
+    //   - update: dueño o admin.
+    // BLOQUEA:
+    //   - Edición de landings ajenas.
+    // NOTA:
+    //   Lectura pública SOLO cuando isPublished == true.
+    // -------------------------------------------------------------------------
+    match /leaderLandingPages/{uid} {
+      allow create: if isOwner(uid) &&
+        request.resource.data.leaderId == uid;
+
+      allow read: if resource.data.isPublished == true ||
+        isOwner(uid) ||
+        isAdmin();
+
+      allow update: if isOwner(uid) || isAdmin();
+
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // referralCodes/{code}
+    // PERMITE:
+    //   - read: público (resolver invitaciones / validar código en registro).
+    //   - create: usuario autenticado solo para su propio uid/leaderId.
+    //   - update/delete: solo admin.
+    // BLOQUEA:
+    //   - Suplantación de códigos ajenos.
+    // NOTA:
+    //   Lectura pública no debe incluir datos sensibles en el documento.
+    // TODO/SECURITY:
+    //   Exponer solo campos mínimos (code, leaderId, isActive) en cliente público.
+    // -------------------------------------------------------------------------
+    match /referralCodes/{code} {
+      allow read: if true;
+
+      allow create: if isSignedIn() &&
+        request.resource.data.code == code &&
+        request.resource.data.uid == request.auth.uid &&
+        request.resource.data.leaderId == request.auth.uid &&
+        request.resource.data.isActive == true;
+
+      allow update, delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // slugs/{slug}
+    // PERMITE:
+    //   - read: público (comprobar disponibilidad del slug).
+    //   - create: usuario autenticado reserva su propio slug (registro).
+    //   - update/delete: solo admin.
+    // BLOQUEA:
+    //   - Suplantación de slugs ajenos.
+    // NOTA:
+    //   Lectura pública intencional: solo slug, uid, isActive. Sin datos sensibles.
+    // TODO/SECURITY:
+    //   Condición de carrera entre check y batch; segundo commit fallará si slug ya existe.
+    // -------------------------------------------------------------------------
+    match /slugs/{slug} {
+      // Lectura pública intencional: solo sirve para comprobar disponibilidad del slug.
+      // SECURITY: No almacenar datos sensibles aquí.
+      allow read: if true;
+
+      // Solo un usuario autenticado puede reservar su propio slug (sin exigir email verificado).
+      allow create: if isSignedIn() &&
+        request.resource.data.uid == request.auth.uid &&
+        request.resource.data.slug == slug &&
+        request.resource.data.isActive == true;
+
+      // Solo admin puede modificar o eliminar reservas.
+      allow update, delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // prospects/{prospectId}
+    // PERMITE:
+    //   - create: público con validación mínima (captura desde landing).
+    //   - read/update/delete: admin o dueño del leaderId (request.auth.uid).
+    // BLOQUEA:
+    //   - Campos peligrosos en create (role, admin, uid, isAdmin).
+    //   - Acceso cruzado entre cuentas.
+    // TODO/SECURITY:
+    //   create público habilita spam; considerar rate limit (App Check / CF).
+    // TODO/SECURITY:
+    //   Validar que leaderId exista y esté activo requiere get() adicional o CF.
+    // -------------------------------------------------------------------------
+    match /prospects/{prospectId} {
+      allow create: if isValidPublicProspectCreate() ||
+        isValidPresentationLandingProspectCreate() ||
+        isValidManualContactCreate();
+
+      allow read: if isAdmin() ||
+        (isSignedIn() && isEmailVerified() && (
+          resource.data.leaderId == request.auth.uid ||
+          resource.data.ownerUid == request.auth.uid
+        ));
+
+      allow update: if isAdmin() ||
+        (isProspectOwner() && isValidProspectOwnerStatusUpdate());
+
+      allow delete: if isAdmin() ||
+        (isSignedIn() && isEmailVerified() && resource.data.leaderId == request.auth.uid);
+    }
+
+    // -------------------------------------------------------------------------
+    // leadActivities/{activityId}
+    // PERMITE:
+    //   - create/read: admin o usuario dueño del leaderId del documento.
+    //   - update/delete: solo admin.
+    // BLOQUEA:
+    //   - Manipulación de historial por terceros.
+    // TODO/SECURITY:
+    //   Validar relación prospectId -> leaderId requiere get() extra o CF.
+    //   Por ahora se exige leaderId == auth.uid en create/read.
+    // -------------------------------------------------------------------------
+    match /leadActivities/{activityId} {
+      allow create: if isAdmin() || (
+        isSignedIn() &&
+        isEmailVerified() &&
+        request.resource.data.leaderId == request.auth.uid &&
+        request.resource.data.createdBy == request.auth.uid
+      );
+
+      allow read: if isAdmin() || (
+        isSignedIn() &&
+        isEmailVerified() &&
+        resource.data.leaderId == request.auth.uid
+      );
+
+      allow update, delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // academyMaterials/{materialId}
+    // PERMITE:
+    //   - create: usuario autenticado con email verificado (ownerUid == auth.uid).
+    //   - read: admin o dueño del material.
+    // BLOQUEA:
+    //   - Lectura/escritura pública.
+    //   - Acceso cruzado entre cuentas.
+    // -------------------------------------------------------------------------
+    match /academyMaterials/{materialId} {
+      allow create: if isValidAcademyMaterialCreate();
+
+      allow read: if isAdmin() || canReadAcademyMaterial();
+
+      allow update: if isAdmin() || isValidAcademyMaterialUpdate() || isValidAcademyMaterialLegacyTeamIdSync();
+
+      allow delete: if isAdmin() || isAcademyMaterialOwner();
+    }
+
+    // -------------------------------------------------------------------------
+    // academyTests/{testId}
+    // PERMITE:
+    //   - create: usuario autenticado con email verificado (ownerUid == auth.uid).
+    //   - read/update: admin o dueño del test.
+    // BLOQUEA:
+    //   - Lectura/escritura pública.
+    //   - Acceso cruzado entre cuentas.
+    // -------------------------------------------------------------------------
+    match /academyTests/{testId} {
+      allow create: if isValidAcademyTestCreate();
+
+      allow read: if isAdmin() || canReadAcademyTest();
+
+      allow update: if isAdmin() || (isAcademyTestOwner() && isValidAcademyTestUpdate()) || isValidAcademyTestLegacyTeamIdSync();
+
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // academyTestAttempts/{attemptId}
+    // PERMITE:
+    //   - create: miembro activo del team, solo para sí mismo.
+    //   - read: admin, owner del team o el propio miembro.
+    // BLOQUEA:
+    //   - Lectura cruzada entre miembros.
+    //   - Escritura para otro usuario.
+    // -------------------------------------------------------------------------
+    match /academyTestAttempts/{attemptId} {
+      allow create: if isValidAcademyTestAttemptCreate();
+
+      allow read: if isAdmin() || canReadAcademyTestAttempt();
+
+      allow update, delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // academyMaterialEngagements/{engagementId}
+    // PERMITE:
+    //   - create/update: miembro activo en teamMembers/{teamId}_{uid} o owner del team.
+    //   - read: admin, owner del team o el propio miembro.
+    // BLOQUEA:
+    //   - Lectura/escritura cruzada entre miembros.
+    // -------------------------------------------------------------------------
+    match /academyMaterialEngagements/{engagementId} {
+      allow create: if isAdmin() || isValidAcademyMaterialEngagementCreate(engagementId);
+
+      allow read: if isAdmin() || canReadAcademyMaterialEngagement();
+
+      allow update: if isAdmin() || isValidAcademyMaterialEngagementUpdate(engagementId);
+
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // actionTasks/{taskId}
+    // PERMITE:
+    //   - create: usuario autenticado con email verificado (ownerUid == auth.uid).
+    //   - read: admin o dueño de la tarea.
+    //   - update: admin o dueño (solo status + updatedAt).
+    // BLOQUEA:
+    //   - Lectura/escritura pública.
+    //   - Acceso cruzado entre cuentas.
+    // -------------------------------------------------------------------------
+    match /actionTasks/{taskId} {
+      allow create: if isValidActionTaskCreate();
+
+      allow read: if isAdmin() || isActionTaskOwner();
+
+      allow update: if isAdmin() || (isActionTaskOwner() && isValidActionTaskStatusUpdate());
+
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // teams/{teamId}
+    // PERMITE:
+    //   - create: usuario autenticado con email verificado (ownerUid == auth.uid).
+    //   - read: admin o dueño del grupo.
+    // BLOQUEA:
+    //   - Lectura/escritura cruzada entre cuentas.
+    // -------------------------------------------------------------------------
+    match /teams/{teamId} {
+      allow create: if isValidTeamCreate() || isValidAdminProvisionedTeamCreate();
+
+      allow get: if isAdmin() ||
+        isTeamOwner() ||
+        isActiveTeamMember(teamId) ||
+        resource.data.status == 'active';
+
+      allow list: if isAdmin() || isTeamOwner();
+
+      allow update: if isAdmin() || isValidTeamNameUpdate();
+
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // leaderInviteCodes/{code}
+    // PERMITE:
+    //   - get: público (validar invitación por código en registro futuro).
+    //   - list: solo admin.
+    //   - create: dueño del código (ownerUid == auth.uid).
+    // BLOQUEA:
+    //   - Listado público de códigos.
+    //   - Suplantación de códigos ajenos.
+    // -------------------------------------------------------------------------
+    match /leaderInviteCodes/{code} {
+      allow get: if true;
+
+      allow list: if isAdmin();
+
+      allow create: if isValidLeaderInviteCodeCreate(code) ||
+        isValidAdminProvisionedLeaderInviteCodeCreate(code);
+
+      allow update, delete: if isAdmin() || isLeaderInviteCodeOwner();
+    }
+
+    // -------------------------------------------------------------------------
+    // teamMembers/{teamId_memberUid}
+    // PERMITE:
+    //   - create: usuario autenticado como owner de su propio membership.
+    //   - read: admin, miembro o dueño del grupo.
+    // BLOQUEA:
+    //   - Acceso cruzado entre cuentas.
+    // -------------------------------------------------------------------------
+    match /teamMembers/{memberId} {
+      allow create: if isValidTeamMemberOwnerCreate() ||
+        isValidTeamMemberMemberCreate() ||
+        isValidAdminProvisionedTeamMemberOwnerCreate();
+
+      allow read: if isAdmin() || isTeamMemberSelfOrOwner();
+
+      allow update, delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // groupActivationRequests/{requestId}
+    // ⚠️ CRÍTICO — UPGRADE / ACTIVACIÓN DE GRUPO (120€/año). NO tocar sin revisar group-activation.service.ts
+    // PERMITE:
+    //   - create: usuario autenticado con email verificado, solo para sí mismo.
+    //   - read: admin o solicitante.
+    //   - update: admin para aprobar/rechazar solicitudes pendientes.
+    // BLOQUEA:
+    //   - Acceso público y escalada de estado por usuarios normales.
+    // -------------------------------------------------------------------------
+    match /groupActivationRequests/{requestId} {
+      allow create: if isValidGroupActivationRequestCreate();
+
+      allow read: if isAdmin() || (
+        isSignedIn() &&
+        resource.data.requesterUid == request.auth.uid
+      );
+
+      allow update: if isValidGroupActivationRequestReview() || (
+        isAdmin() &&
+        resource.data.status == 'pending' &&
+        request.resource.data.status in ['approved', 'rejected'] &&
+        request.resource.data.reviewedBy == request.auth.uid &&
+        request.resource.data.reviewedAt == request.time
+      );
+
+      allow delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // DENEGAR TODO LO DEMÁS
+    // Cualquier colección no definida explícitamente queda bloqueada.
+    // -------------------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,2 @@
+export const GROUP_ACTIVATION_AMOUNT = 120
+export const GROUP_ACTIVATION_CURRENCY = 'EUR'
