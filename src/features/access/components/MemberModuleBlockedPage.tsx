@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui'
 import { canAccessGroupContent } from '@/features/access/utils/canAccessGroupContent'
 import { useAuth } from '@/features/auth/hooks/useAuth'
+import { formatExpansionAnnualPriceLabel } from '@/features/referrals/constants/referralProgram.constants'
 import { cn } from '@/lib/utils'
 
 type MemberModuleBlockedPageProps = {
@@ -34,7 +35,9 @@ export function MemberModuleBlockedPage({ className }: MemberModuleBlockedPagePr
                 invitación del grupo al que perteneces.
               </p>
             ) : null}
-            <p className="mt-4 text-sm font-semibold text-gold-light">Activación anual: 120€</p>
+            <p className="mt-4 text-sm font-semibold text-gold-light">
+              Activación anual: {formatExpansionAnnualPriceLabel()}
+            </p>
             <Link to="/dashboard/mi-grupo" className="mt-5 inline-block">
               <Button
                 type="button"

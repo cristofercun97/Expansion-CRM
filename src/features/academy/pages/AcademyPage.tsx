@@ -31,6 +31,10 @@ import { useEnsureOwnedTeamForActiveUser } from '@/features/team/hooks/useEnsure
 import { useSyncLegacyAcademyToOwnedTeam } from '@/features/academy/hooks/useSyncLegacyAcademyToOwnedTeam'
 import { useAcademyTeamContext } from '@/features/academy/hooks/useAcademyTeamContext'
 import { useMemberHomeTeamInfo } from '@/features/academy/hooks/useMemberHomeTeamInfo'
+import { TeamContextSelector } from '@/features/team/components/TeamContextSelector'
+import { TeamContextSwitcher } from '@/features/team/components/TeamContextSwitcher'
+import { useTeamContextSelection } from '@/features/team/hooks/useTeamContextSelection'
+import { applyAcademyTeamContextMode } from '@/features/team/utils/teamContextUtils'
 
 function logAcademyDevError(message: string, error: unknown): void {
   if (import.meta.env.DEV) {
@@ -49,7 +53,18 @@ export function AcademyPage() {
   const { appUser, currentUser, initialized, loading: authLoading } = useAuth()
   const { isEnsuring, ensureError } = useEnsureOwnedTeamForActiveUser()
   const { isSyncing, syncError } = useSyncLegacyAcademyToOwnedTeam()
-  const { teamContext, resolvedHomeTeamId, resolvingTeams } = useAcademyTeamContext()
+  const { teamContext: rawTeamContext, resolvedHomeTeamId, resolvingTeams } = useAcademyTeamContext()
+  const teamContextSelection = useTeamContextSelection({
+    resolvedHomeTeamId,
+    resolvingHomeTeam: resolvingTeams,
+  })
+  const teamContext = useMemo(
+    () =>
+      teamContextSelection.mode
+        ? applyAcademyTeamContextMode(rawTeamContext, teamContextSelection.mode)
+        : rawTeamContext,
+    [rawTeamContext, teamContextSelection.mode],
+  )
   const {
     team: memberHomeTeam,
     leaderName: memberHomeLeaderName,
@@ -531,6 +546,15 @@ export function AcademyPage() {
     )
   }
 
+  if (teamContextSelection.showSelector) {
+    return (
+      <TeamContextSelector
+        availability={teamContextSelection.availability}
+        onSelect={teamContextSelection.selectContext}
+      />
+    )
+  }
+
   return (
     <div className="space-y-6 px-8 py-8">
       <PageHeader
@@ -550,6 +574,13 @@ export function AcademyPage() {
           ) : null
         }
       />
+
+      {teamContextSelection.canSwitch && teamContextSelection.mode ? (
+        <TeamContextSwitcher
+          mode={teamContextSelection.mode}
+          onSwitch={teamContextSelection.clearContext}
+        />
+      ) : null}
 
       {loading ? (
         <div className="flex min-h-[30vh] items-center justify-center">

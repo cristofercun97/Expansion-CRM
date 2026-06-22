@@ -2,9 +2,28 @@ type WeeklyProgressWidgetProps = {
   value: number
   goal: number
   message: string
+  emptyMessage?: string | null
+  isAvailable?: boolean
 }
 
-export function WeeklyProgressWidget({ value, goal, message }: WeeklyProgressWidgetProps) {
+export function WeeklyProgressWidget({
+  value,
+  goal,
+  message,
+  emptyMessage,
+  isAvailable = true,
+}: WeeklyProgressWidgetProps) {
+  if (!isAvailable) {
+    return (
+      <section className="rounded-2xl border border-white/15 bg-white/8 p-6 backdrop-blur-xl">
+        <h2 className="text-base font-semibold text-hero-text">Tu avance esta semana</h2>
+        <p className="mt-4 text-sm leading-relaxed text-hero-text/70">
+          {emptyMessage ?? 'Aún no hay avance semanal disponible'}
+        </p>
+      </section>
+    )
+  }
+
   const radius = 70
   const circumference = Math.PI * radius
   const progress = Math.min(value / 100, 1)

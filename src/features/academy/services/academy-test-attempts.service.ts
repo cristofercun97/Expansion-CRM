@@ -163,9 +163,32 @@ async function getMyAttemptsForTest(
     })
 }
 
+async function getMyAttemptsByTeamId(
+  teamId: string,
+  memberUid: string,
+): Promise<AcademyTestAttempt[]> {
+  const snapshot = await getDocs(
+    query(
+      collection(getFirebaseDb(), COLLECTIONS.academyTestAttempts),
+      where('teamId', '==', teamId),
+      where('memberUid', '==', memberUid),
+    ),
+  )
+
+  return snapshot.docs
+    .map((attemptDoc) => mapAcademyTestAttempt(attemptDoc.id, attemptDoc.data()))
+    .filter((attempt): attempt is AcademyTestAttempt => attempt !== null)
+    .sort((left, right) => {
+      const leftTime = left.submittedAt?.toMillis?.() ?? 0
+      const rightTime = right.submittedAt?.toMillis?.() ?? 0
+      return rightTime - leftTime
+    })
+}
+
 export const academyTestAttemptsService = {
   submitTestAttempt,
   getAttemptsByTest,
   getAttemptsByTeamId,
+  getMyAttemptsByTeamId,
   getMyAttemptsForTest,
 }

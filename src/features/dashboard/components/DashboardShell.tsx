@@ -1,6 +1,8 @@
-import { Menu } from 'lucide-react'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
+import { DashboardMobileBottomNav } from '@/features/dashboard/components/DashboardMobileBottomNav'
+import { DashboardMobileHeader } from '@/features/dashboard/components/DashboardMobileHeader'
 import { DashboardSidebar } from '@/features/dashboard/components/DashboardSidebar'
 import type { DashboardUserIdentity } from '@/features/dashboard/types/dashboard.types'
 
@@ -29,6 +31,7 @@ function useIsDesktop() {
 }
 
 export function DashboardShell({ children, user, onLogout }: DashboardShellProps) {
+  const navigate = useNavigate()
   const isDesktop = useIsDesktop()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -42,6 +45,10 @@ export function DashboardShell({ children, user, onLogout }: DashboardShellProps
   const handleMobileClose = useCallback(() => {
     setMobileOpen(false)
   }, [])
+
+  const handleSettingsClick = useCallback(() => {
+    navigate('/dashboard/configuracion')
+  }, [navigate])
 
   useEffect(() => {
     if (isDesktop) {
@@ -72,23 +79,19 @@ export function DashboardShell({ children, user, onLogout }: DashboardShellProps
 
       <div
         className={cn(
-          'min-h-screen transition-[margin-left] duration-300 ease-in-out',
+          'min-h-screen overflow-x-hidden transition-[margin-left] duration-300 ease-in-out',
           isDesktop && (effectiveCollapsed ? 'ml-[4.5rem]' : 'ml-64'),
-          !isDesktop && 'ml-0',
+          !isDesktop &&
+            'ml-0 pt-[calc(4rem+env(safe-area-inset-top,0px))] pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))]',
         )}
       >
         {!isDesktop ? (
-          <button
-            type="button"
-            onClick={() => setMobileOpen(true)}
-            className="fixed left-4 top-4 z-20 flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-white/15 bg-petrol-deep/90 text-hero-text shadow-lg backdrop-blur-md transition-colors hover:bg-white/10 lg:hidden"
-            aria-label="Abrir menú"
-          >
-            <Menu className="h-5 w-5" aria-hidden="true" />
-          </button>
+          <DashboardMobileHeader onSettingsClick={handleSettingsClick} onLogout={onLogout} />
         ) : null}
 
         {children}
+
+        {!isDesktop ? <DashboardMobileBottomNav /> : null}
       </div>
     </div>
   )

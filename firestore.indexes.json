@@ -62,11 +62,132 @@
       ]
     },
     {
+      "collectionGroup": "academyTestAttempts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "teamId", "order": "ASCENDING" },
+        { "fieldPath": "memberUid", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "academyMaterialEngagements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "teamId", "order": "ASCENDING" },
+        { "fieldPath": "memberUid", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "teamMembers",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "teamId", "order": "ASCENDING" },
         { "fieldPath": "ownerUid", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "actionTasks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "teamId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "actionTaskProgress",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "teamId", "order": "ASCENDING" },
+        { "fieldPath": "memberUid", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "actionTaskProgress",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "teamId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "recognitionWeeklySnapshots",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "teamId", "order": "ASCENDING" },
+        { "fieldPath": "isPublished", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "teamRecognitions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "teamId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "teamRecognitions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "teamId", "order": "ASCENDING" },
+        { "fieldPath": "visibility", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "teamRecognitions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "teamId", "order": "ASCENDING" },
+        { "fieldPath": "recipientUid", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "teamSalesReports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "teamId", "order": "ASCENDING" },
+        { "fieldPath": "memberUid", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "teamSalesReports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "teamId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "referralRewards",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "beneficiaryUid", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "referralRewards",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "beneficiaryUid", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "referralPayoutRequests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userUid", "order": "ASCENDING" },
+        { "fieldPath": "requestedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "referralPayoutRequests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "requestedAt", "order": "DESCENDING" }
       ]
     }
   ],

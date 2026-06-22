@@ -15,12 +15,14 @@ import {
   GROUP_ACTIVATION_CURRENCY,
 } from '@/features/group-activation/constants/groupActivation.constants'
 import type { GroupActivationRequest } from '@/features/group-activation/types/group-activation.types'
+import { referralRewardsService } from '@/features/referrals/services/referral-rewards.service'
+import { referralUplineService } from '@/features/referrals/services/referral-upline.service'
 import { teamService } from '@/features/team/services/team.service'
 import { COLLECTIONS, getFirebaseDb } from '@/lib/firebase'
 import type { AppUser } from '@/types'
 
 /**
- * ⚠️ MÓDULO CRÍTICO — ACTIVACIÓN DE GRUPO (UPGRADE 120€/año)
+ * ⚠️ MÓDULO CRÍTICO — ACTIVACIÓN DE GRUPO (UPGRADE 160€/año)
  *
  * NO modificar sin revisar también:
  * - firestore.rules → isValidGroupActivationRequestCreate / isValidGroupActivationRequestReview
@@ -137,6 +139,21 @@ async function requestGroupActivation(appUser: AppUser): Promise<void> {
 
   const requesterName = resolveRequesterName(appUser)
 
+  try {
+    await referralUplineService.ensureReferralUplineIfMissing({
+      uid: appUser.uid,
+      homeTeamId: appUser.homeTeamId,
+      source: 'activation_request',
+    })
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn('[Group Activation] No se pudo asegurar referralUpline al solicitar activación', {
+        uid: appUser.uid,
+        error,
+      })
+    }
+  }
+
   const db = getFirebaseDb()
   const batch = writeBatch(db)
   const requestRef = doc(collection(db, COLLECTIONS.groupActivationRequests))
@@ -226,22 +243,58 @@ async function approveActivationRequest(requestId: string, adminUid: string): Pr
     updatedAt: now,
   }
 
+  let finalOwnedTeamId = existingOwnedTeamId
+
   if (existingOwnedTeamId) {
     userUpdate.ownedTeamId = existingOwnedTeamId
   } else {
     const displayName = resolveRequesterDisplayName(request)
-    const ownedTeamId = await teamService.appendOwnedTeamToBatch(
+    finalOwnedTeamId = await teamService.appendOwnedTeamToBatch(
       batch,
       request.requesterUid,
       displayName,
       now,
     )
-    userUpdate.ownedTeamId = ownedTeamId
+    userUpdate.ownedTeamId = finalOwnedTeamId
+  }
+
+  const homeTeamId = request.currentHomeTeamId.trim()
+
+  if (homeTeamId && finalOwnedTeamId) {
+    batch.update(doc(db, COLLECTIONS.teamMembers, `${homeTeamId}_${request.requesterUid}`), {
+      ownedTeamId: finalOwnedTeamId,
+      activationStatus: 'active',
+      updatedAt: now,
+    })
   }
 
   batch.update(userRef, userUpdate)
 
   await batch.commit()
+
+  try {
+    const rewardResult = await referralRewardsService.createReferralRewardsForActivation({
+      activationRequestId: request.id,
+      activatedUserUid: request.requesterUid,
+      activatedUserName: request.requesterName,
+      activatedUserEmail: request.requesterEmail,
+      amount: request.amount,
+      currency: request.currency,
+      homeTeamId: request.currentHomeTeamId,
+      ownedTeamId: finalOwnedTeamId,
+      requestRawData: requestSnapshot.data() as Record<string, unknown>,
+    })
+
+    if (import.meta.env.DEV && rewardResult.warnings.length > 0) {
+      console.warn('[Referral Rewards] Activación aprobada con avisos de recompensa', rewardResult)
+    }
+  } catch (error) {
+    console.warn('[Referral Rewards] No se pudieron generar recompensas tras aprobar activación', {
+      activationRequestId: request.id,
+      activatedUserUid: request.requesterUid,
+      error,
+    })
+  }
 }
 
 async function rejectActivationRequest(

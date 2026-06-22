@@ -6,6 +6,7 @@ import { useToast } from '@/components/ui/toast/ToastProvider'
 import { groupActivationService } from '@/features/group-activation/services/group-activation.service'
 import type { GroupActivationRequest } from '@/features/group-activation/types/group-activation.types'
 import { formatContactDateTime } from '@/features/contacts/utils/formatContactDate'
+import { formatExpansionAnnualPriceLabel } from '@/features/referrals/constants/referralProgram.constants'
 
 const glassCardClassName =
   'rounded-2xl border border-white/15 bg-white/8 shadow-[0_8px_32px_rgba(0,0,0,0.2)] backdrop-blur-xl'
@@ -63,7 +64,10 @@ export function AdminActivationRequestsPanel() {
 
     try {
       await groupActivationService.approveActivationRequest(requestId, currentUser.uid)
-      showToast('Solicitud aprobada. El usuario ya tiene activación activa.', 'success')
+      showToast(
+        'Activación aprobada. Recompensas de recomendación generadas si existía cadena válida.',
+        'success',
+      )
       await loadRequests()
     } catch (error) {
       const message =
@@ -102,7 +106,8 @@ export function AdminActivationRequestsPanel() {
     <div className={glassCardClassName}>
       <div className="border-b border-white/10 px-6 py-5">
         <p className="text-sm leading-relaxed text-hero-text/70">
-          Revisa y gestiona las solicitudes pendientes de Activación de grupo (120€ / año).
+          Revisa y gestiona las solicitudes pendientes de Activación de grupo (
+          {formatExpansionAnnualPriceLabel()}).
         </p>
       </div>
 

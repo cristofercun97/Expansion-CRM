@@ -1,7 +1,9 @@
-import { Check, Copy, Link2, Loader2, MessageCircle } from 'lucide-react'
+import { Check, Copy, Link2, Loader2, MessageCircle, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { Badge, Button } from '@/components/ui'
 import { useToast } from '@/components/ui/toast/ToastProvider'
+import { useRecommendationCode } from '@/features/referrals/hooks/useRecommendationCode'
+import { buildRecommendationMessage } from '@/features/referrals/utils/recommendationUtils'
 import type { Team } from '@/features/team/types/team.types'
 import {
   buildTeamInviteMessage,
@@ -15,7 +17,7 @@ type TeamInvitePanelProps = {
   className?: string
 }
 
-type CopiedField = 'message' | 'code' | 'link'
+type CopiedField = 'groupMessage' | 'recommendationMessage' | 'code' | 'link'
 
 async function copyText(value: string): Promise<void> {
   if (navigator.clipboard?.writeText) {
@@ -36,6 +38,7 @@ async function copyText(value: string): Promise<void> {
 
 export function TeamInvitePanel({ team, compact = false, className }: TeamInvitePanelProps) {
   const { showToast } = useToast()
+  const { code: recommendationCode, ensureCode, ensuring } = useRecommendationCode()
   const [copiedField, setCopiedField] = useState<CopiedField | null>(null)
   const inviteUrl = buildTeamInviteUrl(team.inviteCode)
   const inviteMessage = buildTeamInviteMessage(team.name, team.inviteCode)
@@ -49,6 +52,21 @@ export function TeamInvitePanel({ team, compact = false, className }: TeamInvite
     } catch {
       showToast('No pudimos copiar al portapapeles.', 'info')
     }
+  }
+
+  async function handleCopyRecommendation() {
+    const code = recommendationCode ?? (await ensureCode())
+
+    if (!code) {
+      showToast('No pudimos preparar tu código de recomendación.', 'info')
+      return
+    }
+
+    await handleCopy(
+      buildRecommendationMessage(code),
+      'recommendationMessage',
+      'Recomendación copiada al portapapeles.',
+    )
   }
 
   return (
@@ -74,11 +92,14 @@ export function TeamInvitePanel({ team, compact = false, className }: TeamInvite
         </Badge>
       </div>
 
-      <div className="mt-5 space-y-4">
-        <div>
-          <p className="text-sm font-medium text-hero-text/65">Invitar miembro</p>
+      <div className="mt-5 space-y-6">
+        <div className="rounded-xl border border-teal-accent/20 bg-teal-accent/5 p-4">
+          <p className="text-sm font-medium text-hero-text">Invitación de grupo</p>
+          <p className="mt-1 text-sm leading-relaxed text-hero-text/70">
+            Úsalo para sumar miembros a tu grupo de trabajo.
+          </p>
           {!compact ? (
-            <p className="mt-1 break-words text-sm leading-relaxed text-hero-text/70">
+            <p className="mt-3 break-words text-sm leading-relaxed text-hero-text/70">
               {inviteMessage}
             </p>
           ) : null}
@@ -88,15 +109,39 @@ export function TeamInvitePanel({ team, compact = false, className }: TeamInvite
             size="sm"
             className="mt-3 cursor-pointer"
             onClick={() =>
-              void handleCopy(inviteMessage, 'message', 'Invitación copiada al portapapeles.')
+              void handleCopy(inviteMessage, 'groupMessage', 'Invitación de grupo copiada al portapapeles.')
             }
           >
-            {copiedField === 'message' ? (
+            {copiedField === 'groupMessage' ? (
               <Check className="h-4 w-4" aria-hidden="true" />
             ) : (
               <MessageCircle className="h-4 w-4" aria-hidden="true" />
             )}
-            Copiar invitación
+            Copiar invitación de grupo
+          </Button>
+        </div>
+
+        <div className="rounded-xl border border-gold/20 bg-gold/5 p-4">
+          <p className="text-sm font-medium text-hero-text">Recomendación comercial</p>
+          <p className="mt-1 text-sm leading-relaxed text-hero-text/70">
+            Úsalo para recomendar Expansión sin añadir a la persona a tu grupo.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-3 cursor-pointer border-gold/30 bg-gold/10 text-hero-text hover:bg-gold/15 hover:text-gold-light"
+            disabled={ensuring}
+            onClick={() => void handleCopyRecommendation()}
+          >
+            {ensuring ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : copiedField === 'recommendationMessage' ? (
+              <Check className="h-4 w-4" aria-hidden="true" />
+            ) : (
+              <Sparkles className="h-4 w-4" aria-hidden="true" />
+            )}
+            Copiar recomendación
           </Button>
         </div>
 

@@ -26,6 +26,7 @@ import {
 } from '@/features/team/utils/teamInviteUtils'
 import { COLLECTIONS, getFirebaseDb } from '@/lib/firebase'
 import { usersService } from '@/services/users.service'
+import { normalizeReferralUpline } from '@/features/referrals/utils/referralUplineUtils'
 
 const MAX_INVITE_CODE_ATTEMPTS = 12
 
@@ -57,6 +58,15 @@ function mapTeamMemberDocument(id: string, data: DocumentData): TeamMember {
         : undefined,
     role: data.role === 'owner' ? 'owner' : 'member',
     status: data.status === 'active' ? 'active' : 'active',
+    ownedTeamId: typeof data.ownedTeamId === 'string' ? data.ownedTeamId : undefined,
+    activationStatus:
+      data.activationStatus === 'active' ||
+      data.activationStatus === 'none' ||
+      data.activationStatus === 'pending' ||
+      data.activationStatus === 'rejected' ||
+      data.activationStatus === 'expired'
+        ? data.activationStatus
+        : undefined,
     joinedAt: data.joinedAt ?? null,
     createdAt: data.createdAt ?? null,
     updatedAt: data.updatedAt ?? null,
@@ -69,9 +79,28 @@ function mapLeaderInviteCodeDocument(code: string, data: DocumentData): LeaderIn
     ownerUid: typeof data.ownerUid === 'string' ? data.ownerUid : '',
     teamId: typeof data.teamId === 'string' ? data.teamId : '',
     teamName: typeof data.teamName === 'string' ? data.teamName : undefined,
+    ownerReferralUpline: Array.isArray(data.ownerReferralUpline)
+      ? normalizeReferralUpline({
+          rawChain: data.ownerReferralUpline,
+          selfUid: typeof data.ownerUid === 'string' ? data.ownerUid : undefined,
+        })
+      : undefined,
     isActive: data.isActive === true,
     createdAt: data.createdAt ?? null,
     updatedAt: data.updatedAt ?? null,
+  }
+}
+
+async function readOwnerReferralUplineSnapshot(ownerUid: string): Promise<string[]> {
+  try {
+    const profile = await usersService.getUserById(ownerUid.trim())
+
+    return normalizeReferralUpline({
+      rawChain: profile?.referralUpline,
+      selfUid: ownerUid.trim(),
+    })
+  } catch {
+    return []
   }
 }
 
@@ -218,6 +247,7 @@ async function appendOwnedTeamToBatch(
   const teamRef = doc(collection(db, COLLECTIONS.teams))
   const teamId = teamRef.id
   const memberId = `${teamId}_${uid}`
+  const ownerReferralUpline = await readOwnerReferralUplineSnapshot(uid)
 
   batch.set(teamRef, {
     ownerUid: uid,
@@ -233,6 +263,7 @@ async function appendOwnedTeamToBatch(
     ownerUid: uid,
     teamId,
     teamName,
+    ...(ownerReferralUpline.length > 0 ? { ownerReferralUpline } : {}),
     isActive: true,
     createdAt: now,
     updatedAt: now,
@@ -348,6 +379,7 @@ async function ensureMyTeam(uid: string, userDisplayNameOrEmail: string): Promis
   const teamId = teamRef.id
   const memberId = `${teamId}_${uid}`
   const now = serverTimestamp()
+  const ownerReferralUpline = await readOwnerReferralUplineSnapshot(uid)
 
   batch.set(teamRef, {
     ownerUid: uid,
@@ -363,6 +395,7 @@ async function ensureMyTeam(uid: string, userDisplayNameOrEmail: string): Promis
     ownerUid: uid,
     teamId,
     teamName,
+    ...(ownerReferralUpline.length > 0 ? { ownerReferralUpline } : {}),
     isActive: true,
     createdAt: now,
     updatedAt: now,
@@ -457,6 +490,46 @@ async function getTeamLeaderDisplayName(
   }
 }
 
+async function verifyActiveOwnedTeamForOwner(
+  ownedTeamId: string,
+  ownerUid: string,
+): Promise<Team | null> {
+  const team = await getTeamById(ownedTeamId.trim())
+
+  if (!team || team.status !== 'active') {
+    return null
+  }
+
+  if (team.ownerUid.trim() !== ownerUid.trim()) {
+    return null
+  }
+
+  return team
+}
+
+async function syncHomeTeamMemberLeaderDenormalization(
+  homeTeamId: string,
+  memberUid: string,
+  ownedTeamId: string,
+): Promise<void> {
+  const normalizedHomeTeamId = homeTeamId.trim()
+  const normalizedMemberUid = memberUid.trim()
+  const normalizedOwnedTeamId = ownedTeamId.trim()
+
+  if (!normalizedHomeTeamId || !normalizedMemberUid || !normalizedOwnedTeamId) {
+    return
+  }
+
+  await updateDoc(
+    doc(getFirebaseDb(), COLLECTIONS.teamMembers, `${normalizedHomeTeamId}_${normalizedMemberUid}`),
+    {
+      ownedTeamId: normalizedOwnedTeamId,
+      activationStatus: 'active',
+      updatedAt: serverTimestamp(),
+    },
+  )
+}
+
 async function updateTeamName(teamId: string, uid: string, name: string): Promise<Team> {
   const trimmedName = name.trim()
   const validationError = validateTeamName(trimmedName)
@@ -499,6 +572,8 @@ export const teamService = {
   resolveHomeTeamIdForAcademy,
   getTeamOwnerOwnedTeamId,
   getTeamLeaderDisplayName,
+  verifyActiveOwnedTeamForOwner,
+  syncHomeTeamMemberLeaderDenormalization,
   ensureMyTeam,
   ensureActiveUserOwnedTeam,
   appendOwnedTeamToBatch,

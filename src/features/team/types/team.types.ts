@@ -1,4 +1,5 @@
 import type { Timestamp } from 'firebase/firestore'
+import type { UserActivationStatus } from '@/types'
 
 export type TeamStatus = 'active'
 
@@ -23,6 +24,7 @@ export type LeaderInviteCode = {
   ownerUid: string
   teamId: string
   teamName?: string
+  ownerReferralUpline?: string[]
   isActive: boolean
   createdAt: Timestamp | null
   updatedAt: Timestamp | null
@@ -51,6 +53,10 @@ export type TeamMember = {
   memberEmail?: string
   role: TeamMemberRole
   status: TeamMemberStatus
+  /** Denormalizado al aprobar activación; legible por el owner del homeTeam. */
+  ownedTeamId?: string
+  /** Denormalizado al aprobar activación; legible por el owner del homeTeam. */
+  activationStatus?: UserActivationStatus
   joinedAt: Timestamp | null
   createdAt: Timestamp | null
   updatedAt: Timestamp | null

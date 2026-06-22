@@ -2,6 +2,7 @@ import { Loader2, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui'
 import { useToast } from '@/components/ui/toast/ToastProvider'
 import { useGroupActivation } from '@/features/group-activation/hooks/useGroupActivation'
+import { formatExpansionAnnualPriceLabel } from '@/features/referrals/constants/referralProgram.constants'
 import { cn } from '@/lib/utils'
 
 type TeamActivationCardProps = {
@@ -79,7 +80,7 @@ export function TeamActivationCard({ className }: TeamActivationCardProps) {
         <p className="mt-2 text-sm leading-relaxed text-hero-text/75">
           Tu solicitud fue rechazada. Puedes contactar con soporte o volver a solicitar.
         </p>
-        <p className="mt-3 text-sm font-semibold text-gold-light">120€ / año</p>
+        <p className="mt-3 text-sm font-semibold text-gold-light">{formatExpansionAnnualPriceLabel()}</p>
         <Button
           type="button"
           variant="outline"
@@ -113,7 +114,7 @@ export function TeamActivationCard({ className }: TeamActivationCardProps) {
         Para crear tu propia organización, activar tus módulos completos y tener tu propio enlace
         de invitación, debes solicitar la Activación de grupo.
       </p>
-      <p className="mt-3 text-sm font-semibold text-gold-light">120€ / año</p>
+      <p className="mt-3 text-sm font-semibold text-gold-light">{formatExpansionAnnualPriceLabel()}</p>
       <Button
         type="button"
         variant="outline"

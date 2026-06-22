@@ -7,14 +7,14 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import logo from '@/assets/logo.png'
-import { adminNavItems } from '@/features/admin/constants/adminNavItems'
-import { canAccessOwnerModules } from '@/features/access/utils/canAccessOwnerModules'
-import { canSeeAcademyProgressNav } from '@/features/access/utils/canAccessAcademyProgress'
 import { useAuth } from '@/features/auth/hooks/useAuth'
-import { dashboardNavItems } from '@/features/dashboard/constants/dashboardDemoData'
 import type { DashboardNavItem, DashboardUserIdentity } from '@/features/dashboard/types/dashboard.types'
+import {
+  isDashboardNavItemLocked,
+  resolveDashboardNavItems,
+} from '@/features/dashboard/utils/dashboardNav.utils'
 import { cn } from '@/lib/utils'
 
 type DashboardSidebarProps = {
@@ -135,10 +135,8 @@ export function DashboardSidebar({
 }: DashboardSidebarProps) {
   const { appUser } = useAuth()
   const location = useLocation()
-  const hasOwnerModuleAccess = canAccessOwnerModules(appUser)
-  const isAdmin = appUser?.role === 'admin'
-  const isAdminArea = location.pathname.startsWith('/admin')
-  const navItems = isAdminArea && isAdmin ? adminNavItems : dashboardNavItems
+  const navigate = useNavigate()
+  const navItems = resolveDashboardNavItems(location.pathname, appUser, 'sidebar')
   const showEmail = user.email.length > 0 && user.displayName !== user.email
   const profileTitle = showEmail ? `${user.displayName} — ${user.email}` : user.displayName
 
@@ -194,24 +192,24 @@ export function DashboardSidebar({
         className={cn('flex-1 space-y-1 overflow-y-auto py-5', collapsed ? 'px-2' : 'px-3')}
         aria-label="Menú principal"
       >
-        {navItems
-          .filter(
-            (item) =>
-              !item.activationOnly || canSeeAcademyProgressNav(appUser),
-          )
-          .map((item) => (
+        {navItems.map((item) => (
           <SidebarLink
             key={item.label}
             {...item}
             collapsed={collapsed}
-            locked={!isAdminArea && Boolean(item.ownerOnly && !hasOwnerModuleAccess)}
+            locked={isDashboardNavItemLocked(item, location.pathname, appUser)}
           />
         ))}
       </nav>
 
       {/* Footer: configuración, cerrar sesión y perfil */}
       <div className={cn('border-t border-white/10 py-4', collapsed ? 'px-2' : 'px-3')}>
-        <FooterAction label="Configuración" icon={Settings} collapsed={collapsed} disabled />
+        <FooterAction
+          label="Configuración"
+          icon={Settings}
+          collapsed={collapsed}
+          onClick={() => navigate('/dashboard/configuracion')}
+        />
 
         <FooterAction
           label="Cerrar sesión"

@@ -8,7 +8,8 @@ import {
   Users,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { EmptyState, PageHeader } from '@/components/ui'
+import { Link } from 'react-router-dom'
+import { Button, EmptyState, PageHeader } from '@/components/ui'
 import { AcademyMemberProgressDetailModal } from '@/features/academy/components/AcademyMemberProgressDetailModal'
 import { AcademyProgressBlockedPage } from '@/features/academy/components/AcademyProgressBlockedPage'
 import {
@@ -27,6 +28,9 @@ import {
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { KpiCard } from '@/features/dashboard/components/KpiCard'
 import { formatContactDateTime } from '@/features/contacts/utils/formatContactDate'
+import { TeamContextSelector } from '@/features/team/components/TeamContextSelector'
+import { TeamContextSwitcher } from '@/features/team/components/TeamContextSwitcher'
+import { useTeamContextSelection } from '@/features/team/hooks/useTeamContextSelection'
 import { cn } from '@/lib/utils'
 
 function MemberContactButton({ member }: { member: AcademyMemberProgressRow }) {
@@ -50,8 +54,12 @@ function MemberContactButton({ member }: { member: AcademyMemberProgressRow }) {
 
 export function AcademyProgressPage() {
   const { appUser } = useAuth()
-  const teamId = appUser?.ownedTeamId ?? null
-  const { data, loading, error } = useAcademyProgress(teamId)
+  const teamContextSelection = useTeamContextSelection()
+  const isMemberView = teamContextSelection.mode === 'member'
+  const leaderTeamId = isMemberView
+    ? null
+    : teamContextSelection.teamId ?? appUser?.ownedTeamId ?? null
+  const { data, loading, error } = useAcademyProgress(leaderTeamId)
   const summary = useAcademyProgressSummary(data)
   const [selectedMember, setSelectedMember] = useState<AcademyMemberProgressRow | null>(null)
 
@@ -90,11 +98,62 @@ export function AcademyProgressPage() {
     )
   }, [data, selectedMember])
 
-  if (appUser?.role !== 'admin' && !teamId) {
+  if (teamContextSelection.resolving) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center px-4 py-6 sm:px-8 sm:py-8">
+        <p className="flex items-center gap-2 text-sm text-hero-text/70">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          Cargando progreso académico...
+        </p>
+      </div>
+    )
+  }
+
+  if (teamContextSelection.showSelector) {
+    return (
+      <TeamContextSelector
+        availability={teamContextSelection.availability}
+        onSelect={teamContextSelection.selectContext}
+      />
+    )
+  }
+
+  if (isMemberView) {
+    return (
+      <div className="space-y-6 px-4 py-6 sm:px-8 sm:py-8">
+        <PageHeader
+          title="Progreso de Academia"
+          subtitle="Tu avance dentro de la academia del grupo."
+          className="border-white/10 [&_h1]:text-hero-text [&_p]:text-hero-text/70"
+        />
+
+        {teamContextSelection.canSwitch ? (
+          <TeamContextSwitcher
+            mode="member"
+            onSwitch={teamContextSelection.clearContext}
+          />
+        ) : null}
+
+        <EmptyState
+          icon={BookOpen}
+          title="Tu avance en la academia del grupo"
+          description="Aquí podrás ver tu progreso dentro de la academia del grupo mientras completas materiales y evaluaciones."
+          className="border-white/15 bg-white/8 text-hero-text backdrop-blur-xl [&_h3]:text-hero-text [&_p]:text-hero-text/70"
+          action={
+            <Link to="/dashboard/academia?context=member">
+              <Button className="bg-gold text-petrol-deep hover:bg-gold-light">Ir a Academia</Button>
+            </Link>
+          }
+        />
+      </div>
+    )
+  }
+
+  if (appUser?.role !== 'admin' && !leaderTeamId) {
     return <AcademyProgressBlockedPage />
   }
 
-  if (appUser?.role === 'admin' && !teamId) {
+  if (appUser?.role === 'admin' && !leaderTeamId) {
     return (
       <div className="space-y-6 px-4 py-6 sm:px-8 sm:py-8">
         <PageHeader
@@ -154,6 +213,13 @@ export function AcademyProgressPage() {
         subtitle="Consulta el rendimiento académico de los miembros de tu equipo."
         className="border-white/10 [&_h1]:text-hero-text [&_p]:text-hero-text/70"
       />
+
+      {teamContextSelection.canSwitch && teamContextSelection.mode ? (
+        <TeamContextSwitcher
+          mode={teamContextSelection.mode}
+          onSwitch={teamContextSelection.clearContext}
+        />
+      ) : null}
 
       {loading ? (
         <div className="flex min-h-[30vh] items-center justify-center">

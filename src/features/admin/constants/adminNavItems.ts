@@ -1,9 +1,10 @@
-import { Sparkles, Users } from 'lucide-react'
+import { Sparkles, Users, Wallet } from 'lucide-react'
 import type { DashboardNavItem } from '@/features/dashboard/types/dashboard.types'
 
 export const adminNavItems: DashboardNavItem[] = [
   { label: 'Activación', to: '/admin/activacion', icon: Sparkles },
   { label: 'Usuarios', to: '/admin/usuarios', icon: Users },
+  { label: 'Pagos', to: '/admin/pagos', icon: Wallet },
 ]
 
 export const adminGlassCardClassName =

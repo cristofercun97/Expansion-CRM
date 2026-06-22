@@ -3,12 +3,14 @@ import {
   BarChart3,
   BookOpen,
   ClipboardList,
+  Gift,
   LayoutGrid,
   LayoutDashboard,
   Lightbulb,
   PlayCircle,
   Presentation,
   Radar,
+  Settings,
   UserPlus,
   Users,
   UsersRound,
@@ -36,13 +38,16 @@ export const dashboardQuickActions: DashboardQuickAction[] = [
 export const dashboardNavItems: DashboardNavItem[] = [
   { label: 'Panel principal', to: '/dashboard', icon: LayoutDashboard, end: true },
   { label: 'Mi grupo', to: '/dashboard/mi-grupo', icon: UsersRound },
+  { label: 'Recompensas', to: '/dashboard/recompensas', icon: Gift },
   { label: 'Presentación', to: '/dashboard/presentacion', icon: Presentation, ownerOnly: true },
   { label: 'Radar de Interés', to: '/dashboard/radar', icon: Radar, ownerOnly: true },
   { label: 'Contactos', to: '/dashboard/contactos', icon: Users, ownerOnly: true },
   { label: 'Academia', to: '/dashboard/academia', icon: BookOpen },
   { label: 'Progreso Academia', to: '/dashboard/progreso-academia', icon: BarChart3, activationOnly: true },
+  { label: 'Progreso de Equipo', to: '/dashboard/progreso-equipo', icon: UsersRound, activationOnly: true },
   { label: 'Plan de Acción', to: '/dashboard/plan', icon: ClipboardList },
   { label: 'Reconocimientos', to: '/dashboard/reconocimientos', icon: Award },
+  { label: 'Configuración', to: '/dashboard/configuracion', icon: Settings },
 ]
 
 export const dashboardModules: DashboardModule[] = [
@@ -90,6 +95,14 @@ export const dashboardModules: DashboardModule[] = [
     subtitle: 'Celebra tus logros y avances',
     icon: Award,
     to: '/dashboard/reconocimientos',
+  },
+  {
+    number: 7,
+    title: 'Progreso de Equipo',
+    subtitle: 'Avance unificado de tu equipo',
+    icon: UsersRound,
+    to: '/dashboard/progreso-equipo',
+    activationOnly: true,
   },
 ]
 

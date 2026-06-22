@@ -10,7 +10,11 @@
     "preview": "vite preview",
     "firebase:check": "vite-node scripts/check-firebase.ts",
     "firebase:deploy-rules": "firebase deploy --only firestore:rules",
-    "admin:bootstrap": "tsx scripts/bootstrap-admin.ts"
+    "admin:bootstrap": "tsx scripts/bootstrap-admin.ts",
+    "backfill:team-member-leaders": "tsx scripts/backfill-team-member-leaders.ts",
+    "backfill:referral-uplines": "tsx scripts/backfill-referral-uplines.ts",
+    "audit:referral-chain": "tsx scripts/audit-referral-chain.ts",
+    "migrate:referral-rewards-payable": "tsx scripts/migrate-referral-rewards-payable.ts"
   },
   "dependencies": {
     "firebase": "^12.14.0",

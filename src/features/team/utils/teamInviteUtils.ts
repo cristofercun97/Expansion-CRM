@@ -53,6 +53,12 @@ export function validateTeamName(name: string): string | null {
   return null
 }
 
-export function buildTeamInviteMessage(teamName: string, inviteCode: string): string {
-  return `Hola te invitamos a que formes parte del grupo ${teamName.trim()} 🎉 ${buildTeamInviteUrl(inviteCode)}`
+export function buildTeamInviteMessage(_teamName: string, inviteCode: string): string {
+  const inviteUrl = buildTeamInviteUrl(inviteCode)
+
+  return `Hola 👋 Te invito a formar parte de mi grupo en Expansión.
+Aquí podrás acceder a formación, plan de acción y herramientas para crecer con nosotros.
+
+Únete aquí:
+${inviteUrl}`
 }

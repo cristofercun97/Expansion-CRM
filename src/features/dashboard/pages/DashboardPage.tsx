@@ -1,149 +1,128 @@
-import { Bell } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
-import { Badge } from '@/components/ui'
-import { cn } from '@/lib/utils'
-import { canAccessOwnerModules } from '@/features/access/utils/canAccessOwnerModules'
+import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/features/auth/hooks/useAuth'
-import { KpiCard } from '@/features/dashboard/components/KpiCard'
-import { ModuleCard } from '@/features/dashboard/components/ModuleCard'
-import { MotivationalQuote } from '@/features/dashboard/components/MotivationalQuote'
-import { QuickActionButton } from '@/features/dashboard/components/QuickActionButton'
-import { SuggestionWidget } from '@/features/dashboard/components/SuggestionWidget'
-import { WeeklyProgressWidget } from '@/features/dashboard/components/WeeklyProgressWidget'
-import {
-  DASHBOARD_PANEL_TITLE,
-  DASHBOARD_WELCOME_SUBTITLE,
-  dashboardModules,
-  dashboardMotivationalQuote,
-  dashboardProgress,
-  dashboardQuickActions,
-  dashboardSuggestion,
-} from '@/features/dashboard/constants/dashboardDemoData'
-import { useDashboardContacts } from '@/features/dashboard/hooks/useDashboardContacts'
+import { DashboardAttentionCard } from '@/features/dashboard/components/overview/DashboardAttentionCard'
+import { DashboardCommercialGoalCard } from '@/features/dashboard/components/overview/DashboardCommercialGoalCard'
+import { DashboardHeroOverview } from '@/features/dashboard/components/overview/DashboardHeroOverview'
+import { DashboardMonthlyPrizesCard } from '@/features/dashboard/components/overview/DashboardMonthlyPrizesCard'
+import { DashboardNextBestActionCard } from '@/features/dashboard/components/overview/DashboardNextBestActionCard'
+import { DashboardPointsPodiumCard } from '@/features/dashboard/components/overview/DashboardPointsPodiumCard'
+import { DashboardQuickLinksCard } from '@/features/dashboard/components/overview/DashboardQuickLinksCard'
+import { DashboardRecentActivityCard } from '@/features/dashboard/components/overview/DashboardRecentActivityCard'
+import { DashboardTeamScopeCard } from '@/features/dashboard/components/overview/DashboardTeamScopeCard'
+import { useDashboardOverview } from '@/features/dashboard/hooks/useDashboardOverview'
 import { useDashboardUser } from '@/features/dashboard/hooks/useDashboardUser'
+import type { DashboardViewScope } from '@/features/dashboard/types/dashboard-overview.types'
+import { resolveNextBestAction } from '@/features/dashboard/utils/dashboardNextBestAction.utils'
 import {
-  TeamInvitePanel,
-  TeamInvitePanelSkeleton,
-} from '@/features/team/components/TeamInvitePanel'
-import { useMyTeam } from '@/features/team/hooks/useMyTeam'
+  canSelectDashboardViewScope,
+  resolveDashboardScope,
+  resolveDefaultDashboardViewScope,
+} from '@/features/dashboard/utils/dashboardScope.utils'
 
 export function DashboardPage() {
-  const navigate = useNavigate()
-  const { appUser } = useAuth()
+  const { appUser, currentUser } = useAuth()
+  const uid = currentUser?.uid ?? appUser?.uid ?? ''
   const { user, isProfileLoading } = useDashboardUser()
-  const { kpis, loading: contactsLoading } = useDashboardContacts()
-  const { team, loading: teamLoading, error: teamError } = useMyTeam()
-  const hasOwnerModuleAccess = canAccessOwnerModules(appUser)
+  const { data: overview, loading: overviewLoading, error: overviewError } = useDashboardOverview(uid)
+  const [viewScope, setViewScope] = useState<DashboardViewScope>('home_team')
+  const [hasInitializedScope, setHasInitializedScope] = useState(false)
 
-  const suggestion = hasOwnerModuleAccess
-    ? dashboardSuggestion
-    : {
-        ...dashboardSuggestion,
-        message:
-          'Dedica 15 minutos a revisar un material de Academia o avanzar una tarea de tu Plan de Acción.',
-        actionLabel: 'Ir a Academia',
-        actionTo: '/dashboard/academia',
-      }
+  useEffect(() => {
+    if (!overviewLoading && !hasInitializedScope) {
+      setViewScope(resolveDefaultDashboardViewScope(overview))
+      setHasInitializedScope(true)
+    }
+  }, [hasInitializedScope, overview, overviewLoading])
+
+  const scoped = useMemo(
+    () => resolveDashboardScope(overview, viewScope),
+    [overview, viewScope],
+  )
+
+  const nextBestAction = useMemo(
+    () =>
+      resolveNextBestAction(overview, {
+        commercialGoal: scoped.commercialGoal,
+        sales: scoped.sales,
+        attentionItems: scoped.attentionItems,
+      }),
+    [overview, scoped],
+  )
+
+  const canSelectHome = canSelectDashboardViewScope(overview, 'home_team')
+  const canSelectOwned = canSelectDashboardViewScope(overview, 'owned_team')
 
   return (
-    <div className="px-8 py-8">
-      {/* Header: bienvenida + acciones rápidas */}
-      <header className="flex flex-wrap items-start justify-between gap-6">
-        <div className="max-w-xl">
-          <div className="flex flex-wrap items-center gap-3">
-            <h1
-              className={cn(
-                'text-3xl font-semibold tracking-tight text-hero-text',
-                isProfileLoading && 'opacity-80',
-              )}
-            >
-              Bienvenido, {user.firstName} 👋
-            </h1>
-            <Badge
-              variant="gold"
-              className="border border-gold/30 bg-gold/15 !text-gold-light ring-gold/40"
-            >
-              {user.roleLabel}
-            </Badge>
-          </div>
-          <p className="mt-2 text-base text-hero-text/70">{DASHBOARD_WELCOME_SUBTITLE}</p>
+    <div className="min-w-0 space-y-4 overflow-x-hidden px-4 py-5 sm:space-y-5 sm:px-6 sm:py-6 md:px-8 md:py-8">
+      <DashboardHeroOverview
+        firstName={user.firstName}
+        roleLabel={user.roleLabel}
+        overview={overview}
+        viewScope={viewScope}
+        onViewScopeChange={setViewScope}
+        canSelectHome={canSelectHome}
+        canSelectOwned={canSelectOwned}
+        loading={overviewLoading}
+        isProfileLoading={isProfileLoading}
+      />
+
+      {!overviewLoading ? (
+        <DashboardNextBestActionCard overview={overview} action={nextBestAction} />
+      ) : (
+        <DashboardNextBestActionCard overview={overview} loading />
+      )}
+
+      {overviewError ? (
+        <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+          No se pudo cargar toda la información del dashboard. {overviewError}
+        </div>
+      ) : null}
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-5 xl:grid-cols-12 xl:gap-6">
+        <div className="md:col-span-2 xl:col-span-7">
+          <DashboardCommercialGoalCard
+            commercialGoal={scoped.commercialGoal}
+            sales={scoped.sales}
+            loading={overviewLoading}
+          />
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          {dashboardQuickActions.map((action) => (
-            <QuickActionButton
-              key={action.label}
-              label={action.label}
-              icon={action.icon}
-              onClick={
-                action.label === 'Invitar'
-                  ? () => navigate('/dashboard/mi-grupo')
-                  : undefined
-              }
-            />
-          ))}
-
-          <button
-            type="button"
-            className="relative ml-1 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-white/15 bg-white/8 text-hero-text/80 transition-colors hover:bg-white/12"
-            aria-label="Notificaciones"
-          >
-            <Bell className="h-5 w-5" aria-hidden="true" />
-            <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-gold" aria-hidden="true" />
-          </button>
+        <div className="md:col-span-2 xl:col-span-5">
+          <DashboardAttentionCard
+            attentionItems={scoped.attentionItems}
+            loading={overviewLoading}
+          />
         </div>
-      </header>
 
-      <section className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Indicadores">
-        {kpis.map((kpi) => (
-          <KpiCard
-            key={kpi.label}
-            kpi={kpi}
-            showProgress={kpi.showProgressRing}
-            progressValue={dashboardProgress.planProgressValue}
-            isLoading={contactsLoading && kpi.source === 'live'}
+        <div className="md:col-span-1 xl:col-span-7 xl:row-span-1">
+          <DashboardPointsPodiumCard ranking={scoped.ranking} loading={overviewLoading} />
+        </div>
+
+        <div className="md:col-span-1 xl:col-span-5">
+          <DashboardMonthlyPrizesCard prizes={scoped.prizes} loading={overviewLoading} />
+        </div>
+
+        <div className="md:col-span-1 xl:col-span-6">
+          <DashboardTeamScopeCard
+            viewScope={viewScope}
+            homeTeam={overview.homeTeam}
+            ownedTeam={overview.ownedTeam}
+            commercialGoal={scoped.commercialGoal}
+            hasActiveOwnedOrganization={overview.userProfile.hasActiveOwnedOrganization}
+            loading={overviewLoading}
           />
-        ))}
-      </section>
+        </div>
 
-      {/* Contenido principal + columna lateral */}
-      <div className="mt-10 flex flex-col gap-8 xl:flex-row">
-        <section className="flex-1">
-          <div className="mb-6 flex items-center gap-3">
-            <h2 className="text-xl font-semibold text-hero-text">{DASHBOARD_PANEL_TITLE}</h2>
-            <div className="h-0.5 max-w-[120px] flex-1 rounded-full bg-gold" aria-hidden="true" />
-          </div>
-
-          <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-            {dashboardModules.map((module) => (
-              <ModuleCard
-                key={module.title}
-                module={module}
-                locked={Boolean(module.ownerOnly && !hasOwnerModuleAccess)}
-              />
-            ))}
-          </div>
-        </section>
-
-        <aside className="w-full shrink-0 space-y-5 xl:w-80" aria-label="Resumen y sugerencias">
-          {teamLoading ? (
-            <TeamInvitePanelSkeleton compact />
-          ) : team ? (
-            <TeamInvitePanel team={team} compact />
-          ) : teamError ? (
-            <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-              {teamError}
-            </div>
-          ) : null}
-
-          <WeeklyProgressWidget
-            value={dashboardProgress.weeklyValue}
-            goal={dashboardProgress.weeklyGoal}
-            message={dashboardProgress.weeklyMessage}
+        <div className="md:col-span-1 xl:col-span-6">
+          <DashboardRecentActivityCard
+            recentActivity={scoped.recentActivity}
+            loading={overviewLoading}
           />
-          <SuggestionWidget suggestion={suggestion} />
-          <MotivationalQuote quote={dashboardMotivationalQuote} />
-        </aside>
+        </div>
+
+        <div className="md:col-span-2 xl:col-span-12">
+          <DashboardQuickLinksCard quickLinks={overview.quickLinks} loading={overviewLoading} />
+        </div>
       </div>
     </div>
   )

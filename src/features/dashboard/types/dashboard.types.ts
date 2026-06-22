@@ -7,6 +7,7 @@ export type DashboardModule = {
   icon: LucideIcon
   to: string
   ownerOnly?: boolean
+  activationOnly?: boolean
 }
 
 export type DashboardKpi = {

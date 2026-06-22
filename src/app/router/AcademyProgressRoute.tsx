@@ -26,12 +26,16 @@ export function AcademyProgressRoute({ children }: AcademyProgressRouteProps) {
     return children
   }
 
-  if (appUser?.activationStatus !== 'active') {
-    return <MemberModuleBlockedPage />
+  const hasMemberContext = Boolean(appUser?.homeTeamId?.trim())
+  const hasLeaderContext =
+    appUser?.activationStatus === 'active' && Boolean(appUser?.ownedTeamId?.trim())
+
+  if (!hasMemberContext && !hasLeaderContext) {
+    return <AcademyProgressBlockedPage />
   }
 
-  if (!appUser.ownedTeamId) {
-    return <AcademyProgressBlockedPage />
+  if (hasLeaderContext && appUser?.activationStatus !== 'active' && !hasMemberContext) {
+    return <MemberModuleBlockedPage />
   }
 
   return children

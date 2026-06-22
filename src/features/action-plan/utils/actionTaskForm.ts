@@ -1,5 +1,6 @@
 import type {
   ActionTaskPriority,
+  ActionTaskResponsibleType,
   ActionTaskStatus,
 } from '@/features/action-plan/types/action-plan.types'
 
@@ -9,6 +10,10 @@ export type ActionTaskFormValues = {
   status: ActionTaskStatus | ''
   priority: ActionTaskPriority | ''
   dueDate: string
+  startDate: string
+  areaId: string
+  responsibleType: ActionTaskResponsibleType
+  responsibleMemberUid: string
 }
 
 export type ActionTaskFormErrors = {
@@ -16,6 +21,7 @@ export type ActionTaskFormErrors = {
   description?: string
   status?: string
   priority?: string
+  responsibleMemberUid?: string
 }
 
 export const DEFAULT_ACTION_TASK_FORM: ActionTaskFormValues = {
@@ -24,6 +30,10 @@ export const DEFAULT_ACTION_TASK_FORM: ActionTaskFormValues = {
   status: 'pending',
   priority: 'medium',
   dueDate: '',
+  startDate: '',
+  areaId: '',
+  responsibleType: 'all',
+  responsibleMemberUid: '',
 }
 
 export function validateActionTaskForm(values: ActionTaskFormValues): ActionTaskFormErrors {
@@ -44,6 +54,10 @@ export function validateActionTaskForm(values: ActionTaskFormValues): ActionTask
 
   if (!values.priority) {
     errors.priority = 'Selecciona una prioridad.'
+  }
+
+  if (values.responsibleType === 'member' && !values.responsibleMemberUid.trim()) {
+    errors.responsibleMemberUid = 'Selecciona un miembro responsable.'
   }
 
   return errors

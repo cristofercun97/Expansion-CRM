@@ -1,4 +1,9 @@
 import type { Timestamp } from 'firebase/firestore'
+import type { ReferralUplineSource } from '@/features/referrals/types/referral-upline.types'
+import type {
+  UserPaymentSettings,
+  UserProfileDetails,
+} from '@/features/settings/types/user-settings.types'
 
 export type AppRoute = '/'
 
@@ -31,6 +36,8 @@ export interface AppUser {
   displayName: string
   phone: string
   photoURL?: string
+  profile?: UserProfileDetails
+  paymentSettings?: UserPaymentSettings
   role: UserRole
   leaderId?: string
   homeTeamId?: string
@@ -38,6 +45,13 @@ export interface AppUser {
   activationStatus?: UserActivationStatus
   activationExpiresAt?: FirestoreDate
   referralCode?: string
+  recommendationCode?: string
+  referredByUserId?: string
+  referredByCode?: string
+  sponsorSource?: 'recommendation' | 'invite'
+  referralUpline?: string[]
+  referralUplineSource?: ReferralUplineSource
+  referralUplineUpdatedAt?: FirestoreDate
   status: UserStatus
   emailVerified: boolean
   createdAt: FirestoreDate
@@ -106,6 +120,13 @@ export interface ReferralCode {
   code: string
   leaderId: string
   uid: string
+  isActive: boolean
+  createdAt: FirestoreDate
+}
+
+export interface RecommendationCode {
+  code: string
+  recommenderUserId: string
   isActive: boolean
   createdAt: FirestoreDate
 }

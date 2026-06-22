@@ -681,15 +681,39 @@ service cloud.firestore {
         );
     }
 
+    function isOptionalActionTaskNullableString(value, maxLen) {
+      return value == null ||
+        (value is string && value.size() <= maxLen);
+    }
+
+    function isOptionalActionTaskDate(value) {
+      return value == null ||
+        (value is string && value.size() == 0) ||
+        (value is string && value.matches('^\\d{4}-\\d{2}-\\d{2}$'));
+    }
+
+    function isValidActionTaskResponsibleType(value) {
+      return value == 'all' || value == 'leader' || value == 'member';
+    }
+
     function isValidActionTaskCreate() {
       let data = request.resource.data;
       let allowedKeys = [
         'ownerUid',
+        'teamId',
         'title',
         'description',
         'status',
         'priority',
         'dueDate',
+        'startDate',
+        'roadmapId',
+        'roadmapTeamId',
+        'areaId',
+        'areaTitle',
+        'responsibleType',
+        'responsibleUid',
+        'responsibleName',
         'createdAt',
         'updatedAt',
       ];
@@ -714,13 +738,44 @@ service cloud.firestore {
         data.priority in allowedPriorities &&
         data.dueDate is string &&
         data.dueDate.size() <= 32 &&
-        (data.dueDate.size() == 0 || data.dueDate.matches('^\\d{4}-\\d{2}-\\d{2}$'));
+        (data.dueDate.size() == 0 || data.dueDate.matches('^\\d{4}-\\d{2}-\\d{2}$')) &&
+        (!('startDate' in data) || isOptionalActionTaskDate(data.startDate)) &&
+        (!('roadmapId' in data) || (data.roadmapId is string && data.roadmapId.size() <= 128)) &&
+        (!('roadmapTeamId' in data) || (data.roadmapTeamId is string && data.roadmapTeamId.size() <= 128)) &&
+        (!('areaId' in data) || (data.areaId is string && data.areaId.size() <= 128)) &&
+        (!('areaTitle' in data) || (data.areaTitle is string && data.areaTitle.size() <= 120)) &&
+        (!('responsibleType' in data) || isValidActionTaskResponsibleType(data.responsibleType)) &&
+        (!('responsibleUid' in data) || isOptionalActionTaskNullableString(data.responsibleUid, 128)) &&
+        (!('responsibleName' in data) || isOptionalActionTaskNullableString(data.responsibleName, 120)) &&
+        (
+          !('teamId' in data) ||
+          data.teamId == '' ||
+          (
+            data.teamId is string &&
+            data.teamId.size() > 0 &&
+            isTeamOwnedByAuth(data.teamId)
+          )
+        );
     }
 
     function isActionTaskOwner() {
       return isSignedIn() &&
         isEmailVerified() &&
         resource.data.ownerUid == request.auth.uid;
+    }
+
+    function canReadActionTask() {
+      return isAdmin() ||
+        isActionTaskOwner() ||
+        (
+          resource.data.keys().hasAll(['teamId']) &&
+          resource.data.teamId is string &&
+          resource.data.teamId.size() > 0 &&
+          (
+            isActiveTeamMember(resource.data.teamId) ||
+            isTeamOwnedByAuth(resource.data.teamId)
+          )
+        );
     }
 
     function isValidActionTaskStatusUpdate() {
@@ -731,6 +786,92 @@ service cloud.firestore {
         data.status is string &&
         data.status in allowedStatuses &&
         data.updatedAt == request.time;
+    }
+
+    function isValidActionTaskLegacyTeamIdUpdate() {
+      let data = request.resource.data;
+      let previous = resource.data;
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+
+      return isActionTaskOwner() &&
+        changed.hasOnly(['teamId', 'updatedAt']) &&
+        data.teamId is string &&
+        data.teamId.size() > 0 &&
+        isTeamOwnedByAuth(data.teamId) &&
+        (
+          !('teamId' in previous) ||
+          !(previous.teamId is string) ||
+          previous.teamId.size() == 0
+        ) &&
+        data.updatedAt == request.time;
+    }
+
+    function isActionPlanProgressActiveMember(teamId) {
+      let memberDocId = teamId + '_' + request.auth.uid;
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        teamId is string &&
+        teamId.size() > 0 &&
+        exists(/databases/$(database)/documents/teamMembers/$(memberDocId)) &&
+        get(/databases/$(database)/documents/teamMembers/$(memberDocId)).data.memberUid == request.auth.uid &&
+        get(/databases/$(database)/documents/teamMembers/$(memberDocId)).data.teamId == teamId &&
+        get(/databases/$(database)/documents/teamMembers/$(memberDocId)).data.status == 'active';
+    }
+
+    function canWriteActionTaskProgress(teamId) {
+      return isActionPlanProgressActiveMember(teamId) || isTeamOwnedByAuth(teamId);
+    }
+
+    function isValidActionTaskProgressWrite(progressId) {
+      let data = request.resource.data;
+      let allowedStatuses = ['pending', 'in_progress', 'completed'];
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        data.memberUid == request.auth.uid &&
+        data.teamId is string &&
+        data.teamId.size() > 0 &&
+        data.taskId is string &&
+        data.taskId.size() > 0 &&
+        data.status is string &&
+        data.status in allowedStatuses &&
+        progressId == data.taskId + '_' + request.auth.uid &&
+        canWriteActionTaskProgress(data.teamId);
+    }
+
+    function isValidActionTaskProgressCreate(progressId) {
+      let data = request.resource.data;
+
+      return isValidActionTaskProgressWrite(progressId) &&
+        data.memberName is string &&
+        data.memberName.size() > 0 &&
+        data.memberName.size() <= 120 &&
+        data.memberEmail is string &&
+        data.memberEmail.size() > 0 &&
+        data.memberEmail.size() <= 320 &&
+        data.createdAt == request.time &&
+        data.updatedAt == request.time;
+    }
+
+    function isValidActionTaskProgressUpdate(progressId) {
+      let data = request.resource.data;
+      let previous = resource.data;
+
+      return isValidActionTaskProgressWrite(progressId) &&
+        previous.memberUid == request.auth.uid &&
+        data.taskId == previous.taskId &&
+        data.teamId == previous.teamId;
+    }
+
+    function canReadActionTaskProgress() {
+      return isAdmin() ||
+        (isSignedIn() && resource.data.memberUid == request.auth.uid) ||
+        (
+          isSignedIn() &&
+          resource.data.keys().hasAll(['teamId']) &&
+          isTeamOwnedByAuth(resource.data.teamId)
+        );
     }
 
     function isValidTeamCreate() {
@@ -788,6 +929,7 @@ service cloud.firestore {
         'ownerUid',
         'teamId',
         'teamName',
+        'ownerReferralUpline',
         'isActive',
         'createdAt',
         'updatedAt',
@@ -809,6 +951,10 @@ service cloud.firestore {
           data.teamName is string &&
           data.teamName.size() >= 3 &&
           data.teamName.size() <= 120
+        )) &&
+        (!('ownerReferralUpline' in data) || (
+          data.ownerReferralUpline is list &&
+          data.ownerReferralUpline.size() <= 3
         ));
     }
 
@@ -960,7 +1106,7 @@ service cloud.firestore {
     }
 
     function isValidGroupActivationRequestCreate() {
-      // ⚠️ CRÍTICO — upgrade 120€/año. Debe coincidir con requestGroupActivation() en group-activation.service.ts
+      // ⚠️ CRÍTICO — upgrade 160€/año. Debe coincidir con requestGroupActivation() en group-activation.service.ts
       let data = request.resource.data;
       let allowedKeys = [
         'requesterUid',
@@ -982,7 +1128,7 @@ service cloud.firestore {
         data.requesterName is string &&
         data.requesterName.size() > 0 &&
         data.currentHomeTeamId is string &&
-        data.amount == 120 &&
+        data.amount == 160 &&
         data.currency == 'EUR' &&
         data.status == 'pending' &&
         data.requestedAt == request.time;
@@ -1086,6 +1232,7 @@ service cloud.firestore {
         'ownerUid',
         'teamId',
         'teamName',
+        'ownerReferralUpline',
         'isActive',
         'createdAt',
         'updatedAt',
@@ -1106,6 +1253,10 @@ service cloud.firestore {
           data.teamName is string &&
           data.teamName.size() >= 3 &&
           data.teamName.size() <= 120
+        )) &&
+        (!('ownerReferralUpline' in data) || (
+          data.ownerReferralUpline is list &&
+          data.ownerReferralUpline.size() <= 3
         ));
     }
 
@@ -1139,6 +1290,48 @@ service cloud.firestore {
         data.status == 'active';
     }
 
+    function isValidReferralUplineList(referralUpline, leaderId) {
+      return referralUpline is list &&
+        referralUpline.size() > 0 &&
+        referralUpline.size() <= 3 &&
+        referralUpline[0] == leaderId;
+    }
+
+    function isValidRecommendationUplineList(referralUpline, referredByUserId) {
+      return referralUpline is list &&
+        referralUpline.size() > 0 &&
+        referralUpline.size() <= 3 &&
+        referralUpline[0] == referredByUserId;
+    }
+
+    function recommendationCodeResolvesToUser(code, recommenderUserId) {
+      return (
+        exists(/databases/$(database)/documents/recommendationCodes/$(code)) &&
+        get(/databases/$(database)/documents/recommendationCodes/$(code)).data.recommenderUserId == recommenderUserId &&
+        get(/databases/$(database)/documents/recommendationCodes/$(code)).data.isActive == true
+      ) || (
+        exists(/databases/$(database)/documents/referralCodes/$(code)) &&
+        get(/databases/$(database)/documents/referralCodes/$(code)).data.uid == recommenderUserId &&
+        get(/databases/$(database)/documents/referralCodes/$(code)).data.isActive == true
+      );
+    }
+
+    function isValidReferralUplineInitialSelfUpdate(userUid) {
+      let data = request.resource.data;
+      let previous = resource.data;
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+
+      return isOwner(userUid) &&
+        isEmailVerified() &&
+        !('referralUpline' in previous) &&
+        changed.hasOnly(['referralUpline', 'referralUplineSource', 'referralUplineUpdatedAt', 'updatedAt']) &&
+        data.referralUpline is list &&
+        data.referralUpline.size() > 0 &&
+        data.referralUpline.size() <= 3 &&
+        data.referralUplineSource in ['invite', 'recommendation', 'activation_request', 'backfill', 'fallback'] &&
+        data.updatedAt == request.time;
+    }
+
     function isValidInvitedMemberUserCreate(userUid) {
       let data = request.resource.data;
       let allowedKeys = [
@@ -1151,10 +1344,17 @@ service cloud.firestore {
         'leaderId',
         'homeTeamId',
         'activationStatus',
+        'recommendationCode',
         'status',
         'emailVerified',
         'createdAt',
         'updatedAt',
+        'referralUpline',
+        'referralUplineSource',
+        'referralUplineUpdatedAt',
+        'referredByUserId',
+        'referredByCode',
+        'sponsorSource',
       ];
 
       return isOwner(userUid) &&
@@ -1168,11 +1368,166 @@ service cloud.firestore {
         data.emailVerified == false &&
         data.leaderId is string &&
         data.leaderId.size() > 0 &&
+        data.recommendationCode is string &&
+        data.recommendationCode.size() > 0 &&
         data.createdAt == request.time &&
         data.updatedAt == request.time &&
         exists(/databases/$(database)/documents/teams/$(data.homeTeamId)) &&
         get(/databases/$(database)/documents/teams/$(data.homeTeamId)).data.ownerUid == data.leaderId &&
-        get(/databases/$(database)/documents/teams/$(data.homeTeamId)).data.status == 'active';
+        get(/databases/$(database)/documents/teams/$(data.homeTeamId)).data.status == 'active' &&
+        (
+          !('referralUpline' in data) ||
+          (
+            isValidReferralUplineList(data.referralUpline, data.leaderId) &&
+            data.referralUplineSource == 'invite' &&
+            data.referralUplineUpdatedAt == request.time
+          )
+        ) &&
+        (
+          !('referredByUserId' in data) ||
+          (
+            data.referredByUserId is string &&
+            data.referredByUserId.size() > 0 &&
+            data.referredByCode is string &&
+            data.referredByCode.size() > 0 &&
+            data.sponsorSource == 'recommendation' &&
+            recommendationCodeResolvesToUser(data.referredByCode, data.referredByUserId)
+          )
+        );
+    }
+
+    function isValidRecommendedUserCreate(userUid) {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'uid',
+        'email',
+        'displayName',
+        'phone',
+        'photoURL',
+        'role',
+        'leaderId',
+        'referralCode',
+        'recommendationCode',
+        'referredByUserId',
+        'referredByCode',
+        'sponsorSource',
+        'status',
+        'emailVerified',
+        'createdAt',
+        'updatedAt',
+        'referralUpline',
+        'referralUplineSource',
+        'referralUplineUpdatedAt',
+      ];
+
+      return isOwner(userUid) &&
+        data.keys().hasOnly(allowedKeys) &&
+        data.uid == userUid &&
+        data.role == 'user' &&
+        data.leaderId == userUid &&
+        !('homeTeamId' in data) &&
+        data.status == 'pending_verification' &&
+        data.emailVerified == false &&
+        data.referredByUserId is string &&
+        data.referredByUserId.size() > 0 &&
+        data.referredByCode is string &&
+        data.referredByCode.size() > 0 &&
+        data.sponsorSource == 'recommendation' &&
+        data.referralCode is string &&
+        data.referralCode.size() > 0 &&
+        data.recommendationCode == data.referralCode &&
+        recommendationCodeResolvesToUser(data.referredByCode, data.referredByUserId) &&
+        data.createdAt == request.time &&
+        data.updatedAt == request.time &&
+        (
+          !('referralUpline' in data) ||
+          (
+            isValidRecommendationUplineList(data.referralUpline, data.referredByUserId) &&
+            data.referralUplineSource == 'recommendation' &&
+            data.referralUplineUpdatedAt == request.time
+          )
+        );
+    }
+
+    function isValidRecommendationCodeSelfInit(userUid) {
+      let data = request.resource.data;
+      let previous = resource.data;
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+
+      return isOwner(userUid) &&
+        isEmailVerified() &&
+        !('recommendationCode' in previous) &&
+        changed.hasOnly(['recommendationCode', 'updatedAt']) &&
+        data.recommendationCode is string &&
+        data.recommendationCode.size() > 0 &&
+        data.updatedAt == request.time;
+    }
+
+    function isValidUserSettingsProfile(profile) {
+      return profile is map &&
+        profile.keys().hasOnly([
+          'fullName',
+          'birthDate',
+          'age',
+          'gender',
+          'city',
+          'countryCode',
+          'countryName',
+          'phone',
+          'photoURL',
+        ]) &&
+        profile.fullName is string &&
+        profile.fullName.size() <= 120 &&
+        profile.birthDate is string &&
+        profile.birthDate.size() <= 20 &&
+        profile.age is number &&
+        profile.age >= 0 &&
+        profile.age <= 120 &&
+        profile.gender is string &&
+        profile.gender.size() <= 32 &&
+        profile.city is string &&
+        profile.city.size() <= 120 &&
+        profile.countryCode is string &&
+        profile.countryCode.size() <= 8 &&
+        profile.countryName is string &&
+        profile.countryName.size() <= 120 &&
+        profile.phone is string &&
+        profile.phone.size() <= 40 &&
+        profile.photoURL is string &&
+        profile.photoURL.size() <= 2048;
+    }
+
+    function isValidUserPaymentSettings(paymentSettings) {
+      return paymentSettings is map &&
+        paymentSettings.keys().hasOnly(['preferredMethod', 'bank', 'crypto']) &&
+        (
+          paymentSettings.preferredMethod == '' ||
+          paymentSettings.preferredMethod == 'bank' ||
+          paymentSettings.preferredMethod == 'crypto'
+        );
+    }
+
+    function isValidUserSettingsSelfUpdate(userUid) {
+      let data = request.resource.data;
+      let previous = resource.data;
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+
+      return isOwner(userUid) &&
+        isEmailVerified() &&
+        data.role == previous.role &&
+        data.uid == previous.uid &&
+        data.leaderId == previous.leaderId &&
+        data.status == previous.status &&
+        changed.hasOnly(['profile', 'paymentSettings', 'displayName', 'phone', 'photoURL', 'updatedAt']) &&
+        (!changed.hasAny(['profile']) || isValidUserSettingsProfile(data.profile)) &&
+        (!changed.hasAny(['paymentSettings']) || isValidUserPaymentSettings(data.paymentSettings)) &&
+        (!changed.hasAny(['displayName']) || (data.displayName is string && data.displayName.size() <= 120)) &&
+        (!changed.hasAny(['phone']) || (data.phone is string && data.phone.size() <= 40)) &&
+        (
+          !changed.hasAny(['photoURL']) ||
+          data.photoURL == null ||
+          (data.photoURL is string && data.photoURL.size() <= 2048)
+        );
     }
 
     // -------------------------------------------------------------------------
@@ -1194,17 +1549,17 @@ service cloud.firestore {
         request.resource.data.leaderId == uid &&
         request.resource.data.status == 'pending_verification' &&
         request.resource.data.emailVerified == false
-      ) || isValidInvitedMemberUserCreate(uid);
+      ) || isValidInvitedMemberUserCreate(uid) || isValidRecommendedUserCreate(uid);
 
       allow read: if isOwner(uid) || isAdmin() || isHomeTeamLeaderProfile(uid) || isMyAssignedLeader(uid);
 
-      allow update: if isAdmin() || isValidAdminGroupActivationUserUpdate(uid) || isValidAdminGroupActivationUserReject(uid) || isValidUserActivationStatusSelfUpdate(uid) || isValidOwnedTeamIdSelfSync(uid) || (
+      allow update: if isAdmin() || isValidAdminGroupActivationUserUpdate(uid) || isValidAdminGroupActivationUserReject(uid) || isValidUserActivationStatusSelfUpdate(uid) || isValidOwnedTeamIdSelfSync(uid) || isValidReferralUplineInitialSelfUpdate(uid) || isValidRecommendationCodeSelfInit(uid) || isValidUserSettingsSelfUpdate(uid) || (
         isOwner(uid) &&
         // El usuario normal NO puede cambiar su role.
         request.resource.data.role == resource.data.role &&
         // No puede auto-declararse verificado sin token de Auth.
         (request.resource.data.emailVerified == false || isEmailVerified()) &&
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['activationStatus', 'activationExpiresAt', 'ownedTeamId'])
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['activationStatus', 'activationExpiresAt', 'ownedTeamId', 'referralUpline', 'referralUplineSource', 'referralUplineUpdatedAt'])
       );
 
       allow delete: if isAdmin();
@@ -1276,6 +1631,26 @@ service cloud.firestore {
         request.resource.data.code == code &&
         request.resource.data.uid == request.auth.uid &&
         request.resource.data.leaderId == request.auth.uid &&
+        request.resource.data.isActive == true;
+
+      allow update, delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // recommendationCodes/{code}
+    // PERMITE:
+    //   - get: público (resolver código durante registro).
+    //   - create: usuario autenticado registra su propio código de recomendación.
+    // BLOQUEA:
+    //   - list público y exposición de datos privados del recomendador.
+    // -------------------------------------------------------------------------
+    match /recommendationCodes/{code} {
+      allow get: if true;
+      allow list: if false;
+
+      allow create: if isSignedIn() &&
+        request.resource.data.code == code &&
+        request.resource.data.recommenderUserId == request.auth.uid &&
         request.resource.data.isActive == true;
 
       allow update, delete: if isAdmin();
@@ -1444,9 +1819,9 @@ service cloud.firestore {
     // -------------------------------------------------------------------------
     // actionTasks/{taskId}
     // PERMITE:
-    //   - create: usuario autenticado con email verificado (ownerUid == auth.uid).
-    //   - read: admin o dueño de la tarea.
-    //   - update: admin o dueño (solo status + updatedAt).
+    //   - create: owner autenticado; teamId opcional si es owner del team.
+    //   - read: admin, owner, miembro activo del team o owner del team.
+    //   - update: admin o owner (status legacy o asociar teamId legacy).
     // BLOQUEA:
     //   - Lectura/escritura pública.
     //   - Acceso cruzado entre cuentas.
@@ -1454,9 +1829,31 @@ service cloud.firestore {
     match /actionTasks/{taskId} {
       allow create: if isValidActionTaskCreate();
 
-      allow read: if isAdmin() || isActionTaskOwner();
+      allow read: if canReadActionTask();
 
-      allow update: if isAdmin() || (isActionTaskOwner() && isValidActionTaskStatusUpdate());
+      allow update: if isAdmin() ||
+        (
+          isActionTaskOwner() &&
+          (isValidActionTaskStatusUpdate() || isValidActionTaskLegacyTeamIdUpdate())
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // actionTaskProgress/{progressId}
+    // PERMITE:
+    //   - create/update: miembro activo o owner del team sobre su propio progreso.
+    //   - read: admin, el propio miembro o owner del team.
+    // BLOQUEA:
+    //   - Escritura cruzada entre miembros.
+    // -------------------------------------------------------------------------
+    match /actionTaskProgress/{progressId} {
+      allow create: if isAdmin() || isValidActionTaskProgressCreate(progressId);
+
+      allow read: if canReadActionTaskProgress();
+
+      allow update: if isAdmin() || isValidActionTaskProgressUpdate(progressId);
 
       allow delete: if isAdmin();
     }
@@ -1525,7 +1922,7 @@ service cloud.firestore {
 
     // -------------------------------------------------------------------------
     // groupActivationRequests/{requestId}
-    // ⚠️ CRÍTICO — UPGRADE / ACTIVACIÓN DE GRUPO (120€/año). NO tocar sin revisar group-activation.service.ts
+    // ⚠️ CRÍTICO — UPGRADE / ACTIVACIÓN DE GRUPO (160€/año). NO tocar sin revisar group-activation.service.ts
     // PERMITE:
     //   - create: usuario autenticado con email verificado, solo para sí mismo.
     //   - read: admin o solicitante.
@@ -1550,6 +1947,1143 @@ service cloud.firestore {
       );
 
       allow delete: if false;
+    }
+
+    function isActiveTeamMemberById(teamId, memberUid) {
+      return isSignedIn() &&
+        teamId is string &&
+        teamId.size() > 0 &&
+        memberUid is string &&
+        memberUid.size() > 0 &&
+        exists(/databases/$(database)/documents/teamMembers/$(teamId + '_' + memberUid)) &&
+        get(/databases/$(database)/documents/teamMembers/$(teamId + '_' + memberUid)).data.memberUid == memberUid &&
+        get(/databases/$(database)/documents/teamMembers/$(teamId + '_' + memberUid)).data.teamId == teamId &&
+        get(/databases/$(database)/documents/teamMembers/$(teamId + '_' + memberUid)).data.status == 'active';
+    }
+
+    function isValidTeamReminderCreate() {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'teamId',
+        'senderUid',
+        'senderName',
+        'recipientUid',
+        'recipientName',
+        'recipientEmail',
+        'title',
+        'message',
+        'type',
+        'status',
+        'createdAt',
+        'relatedContext',
+      ];
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        data.keys().hasOnly(allowedKeys) &&
+        data.teamId is string &&
+        data.teamId.size() > 0 &&
+        data.senderUid == request.auth.uid &&
+        data.senderName is string &&
+        data.senderName.size() > 0 &&
+        data.senderName.size() <= 120 &&
+        data.recipientUid is string &&
+        data.recipientUid.size() > 0 &&
+        data.recipientName is string &&
+        data.recipientName.size() > 0 &&
+        data.recipientName.size() <= 120 &&
+        data.recipientEmail is string &&
+        data.recipientEmail.size() <= 320 &&
+        data.title is string &&
+        data.title.size() > 0 &&
+        data.title.size() <= 200 &&
+        data.message is string &&
+        data.message.size() > 0 &&
+        data.message.size() <= 2000 &&
+        data.type in ['follow_up', 'task', 'academy', 'recognition'] &&
+        data.status == 'unread' &&
+        data.createdAt == request.time &&
+        isTeamOwnedByAuth(data.teamId) &&
+        isActiveTeamMemberById(data.teamId, data.recipientUid) &&
+        (
+          !('relatedContext' in data) ||
+          (
+            data.relatedContext.source in ['team_progress', 'academy', 'action_plan'] &&
+            (
+              !('priority' in data.relatedContext) ||
+              data.relatedContext.priority in ['high', 'medium', 'low']
+            )
+          )
+        );
+    }
+
+    function isValidSalesReportReminderContext(context) {
+      return context is map &&
+        context.keys().hasOnly([
+          'source',
+          'salesReportId',
+          'goalId',
+          'amount',
+          'currency',
+          'memberUid',
+          'priority',
+          'ctaPath',
+        ]) &&
+        context.source == 'sales_goal' &&
+        context.salesReportId is string &&
+        context.salesReportId.size() > 0 &&
+        context.goalId is string &&
+        context.goalId.size() > 0 &&
+        context.amount is number &&
+        context.amount > 0 &&
+        context.currency in ['EUR', 'USD'] &&
+        context.memberUid == request.auth.uid &&
+        (
+          !('priority' in context) ||
+          context.priority in ['high', 'medium', 'low']
+        ) &&
+        (
+          !('ctaPath' in context) ||
+          (
+            context.ctaPath is string &&
+            context.ctaPath.size() > 0 &&
+            context.ctaPath.size() <= 200
+          )
+        );
+    }
+
+    function isValidTeamReminderSalesReportCreate() {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'teamId',
+        'senderUid',
+        'senderName',
+        'recipientUid',
+        'recipientName',
+        'recipientEmail',
+        'title',
+        'message',
+        'type',
+        'status',
+        'createdAt',
+        'relatedContext',
+      ];
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        data.keys().hasOnly(allowedKeys) &&
+        data.teamId is string &&
+        data.teamId.size() > 0 &&
+        exists(/databases/$(database)/documents/teams/$(data.teamId)) &&
+        data.senderUid == request.auth.uid &&
+        data.senderName is string &&
+        data.senderName.size() > 0 &&
+        data.senderName.size() <= 120 &&
+        data.recipientUid ==
+          get(/databases/$(database)/documents/teams/$(data.teamId)).data.ownerUid &&
+        data.recipientUid != request.auth.uid &&
+        data.recipientName is string &&
+        data.recipientName.size() > 0 &&
+        data.recipientName.size() <= 120 &&
+        data.recipientEmail is string &&
+        data.recipientEmail.size() <= 320 &&
+        data.title is string &&
+        data.title.size() > 0 &&
+        data.title.size() <= 200 &&
+        data.message is string &&
+        data.message.size() > 0 &&
+        data.message.size() <= 2000 &&
+        data.type == 'sales_report' &&
+        data.status == 'unread' &&
+        data.createdAt == request.time &&
+        isActiveTeamMember(data.teamId) &&
+        ('relatedContext' in data) &&
+        isValidSalesReportReminderContext(data.relatedContext);
+    }
+
+    function isValidTeamReminderMarkReadUpdate() {
+      let data = request.resource.data;
+      let previous = resource.data;
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        previous.recipientUid == request.auth.uid &&
+        previous.status == 'unread' &&
+        data.status == 'read' &&
+        data.readAt == request.time &&
+        data.teamId == previous.teamId &&
+        data.senderUid == previous.senderUid &&
+        data.senderName == previous.senderName &&
+        data.recipientUid == previous.recipientUid &&
+        data.recipientName == previous.recipientName &&
+        data.recipientEmail == previous.recipientEmail &&
+        data.title == previous.title &&
+        data.message == previous.message &&
+        data.type == previous.type &&
+        data.createdAt == previous.createdAt &&
+        (
+          (!('relatedContext' in previous) && !('relatedContext' in data)) ||
+          (
+            ('relatedContext' in previous) &&
+            ('relatedContext' in data) &&
+            data.relatedContext == previous.relatedContext
+          )
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // teamReminders/{reminderId}
+    // PERMITE:
+    //   - create: owner del team para miembros activos de su grupo.
+    //   - read: admin, receptor o owner del team.
+    //   - update: receptor marca status/readAt como leído.
+    // BLOQUEA:
+    //   - Edición de contenido por el receptor y acceso público.
+    // -------------------------------------------------------------------------
+    match /teamReminders/{reminderId} {
+      allow create: if isAdmin() ||
+        isValidTeamReminderCreate() ||
+        isValidTeamReminderSalesReportCreate();
+
+      allow read: if isAdmin() || (
+        isSignedIn() &&
+        resource.data.recipientUid == request.auth.uid
+      ) || (
+        isSignedIn() &&
+        isEmailVerified() &&
+        isTeamOwnedByAuth(resource.data.teamId)
+      );
+
+      allow update: if isAdmin() || isValidTeamReminderMarkReadUpdate();
+
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // teamActionMaps/{teamId}
+    // PERMITE:
+    //   - create/update: owner del team (1 mapa activo por grupo, docId == teamId).
+    //   - read: admin, owner o miembro activo del team.
+    // BLOQUEA:
+    //   - Múltiples mapas por grupo y edición por miembros.
+    // -------------------------------------------------------------------------
+    function isValidTeamActionMapDate(value) {
+      return value == null ||
+        (value is string && value.size() == 0) ||
+        (value is string && value.matches('^\\d{4}-\\d{2}-\\d{2}$'));
+    }
+
+    function isValidTeamActionMapAreaLinkedTaskIds(value) {
+      return value is list && value.size() <= 50;
+    }
+
+    function isValidTeamActionMapArea(area) {
+      let allowedKeys = [
+        'id',
+        'title',
+        'description',
+        'objective',
+        'indicator',
+        'status',
+        'order',
+        'linkedTaskIds',
+      ];
+      let allowedStatuses = ['green', 'yellow', 'red'];
+
+      return area is map &&
+        area.keys().hasOnly(allowedKeys) &&
+        area.id is string &&
+        area.id.size() > 0 &&
+        area.id.size() <= 128 &&
+        area.title is string &&
+        area.title.size() >= 2 &&
+        area.title.size() <= 120 &&
+        area.description is string &&
+        area.description.size() <= 500 &&
+        area.objective is string &&
+        area.objective.size() <= 500 &&
+        area.indicator is string &&
+        area.indicator.size() <= 500 &&
+        area.status is string &&
+        area.status in allowedStatuses &&
+        area.order is int &&
+        area.order >= 0 &&
+        area.order <= 11 &&
+        isValidTeamActionMapAreaLinkedTaskIds(area.linkedTaskIds);
+    }
+
+    function isValidTeamActionMapAreas(areas) {
+      return areas is list &&
+        areas.size() <= 12 &&
+        (areas.size() < 1 || isValidTeamActionMapArea(areas[0])) &&
+        (areas.size() < 2 || isValidTeamActionMapArea(areas[1])) &&
+        (areas.size() < 3 || isValidTeamActionMapArea(areas[2])) &&
+        (areas.size() < 4 || isValidTeamActionMapArea(areas[3])) &&
+        (areas.size() < 5 || isValidTeamActionMapArea(areas[4])) &&
+        (areas.size() < 6 || isValidTeamActionMapArea(areas[5])) &&
+        (areas.size() < 7 || isValidTeamActionMapArea(areas[6])) &&
+        (areas.size() < 8 || isValidTeamActionMapArea(areas[7])) &&
+        (areas.size() < 9 || isValidTeamActionMapArea(areas[8])) &&
+        (areas.size() < 10 || isValidTeamActionMapArea(areas[9])) &&
+        (areas.size() < 11 || isValidTeamActionMapArea(areas[10])) &&
+        (areas.size() < 12 || isValidTeamActionMapArea(areas[11]));
+    }
+
+    function isValidTeamActionMapPayload(teamId, isCreate) {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'teamId',
+        'ownerUid',
+        'title',
+        'description',
+        'vision',
+        'mainObjective',
+        'periodType',
+        'periodLabel',
+        'startDate',
+        'endDate',
+        'status',
+        'isActive',
+        'areas',
+        'createdAt',
+        'updatedAt',
+      ];
+      let allowedPeriodTypes = ['30_days', '60_days', '90_days', '6_months', '1_year'];
+      let allowedStatuses = ['green', 'yellow', 'red'];
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        data.keys().hasOnly(allowedKeys) &&
+        data.teamId == teamId &&
+        data.ownerUid is string &&
+        data.ownerUid == request.auth.uid &&
+        data.title is string &&
+        data.title.size() >= 3 &&
+        data.title.size() <= 120 &&
+        data.description is string &&
+        data.description.size() <= 500 &&
+        data.vision is string &&
+        data.vision.size() <= 300 &&
+        data.mainObjective is string &&
+        data.mainObjective.size() >= 10 &&
+        data.mainObjective.size() <= 500 &&
+        data.periodType is string &&
+        data.periodType in allowedPeriodTypes &&
+        data.periodLabel is string &&
+        data.periodLabel.size() > 0 &&
+        data.periodLabel.size() <= 80 &&
+        data.status is string &&
+        data.status in allowedStatuses &&
+        isValidTeamActionMapDate(data.startDate) &&
+        isValidTeamActionMapDate(data.endDate) &&
+        data.isActive == true &&
+        isValidTeamActionMapAreas(data.areas) &&
+        data.updatedAt == request.time &&
+        isTeamOwnedByAuth(teamId) &&
+        (
+          isCreate ||
+          (
+            data.createdAt == resource.data.createdAt &&
+            data.teamId == resource.data.teamId &&
+            data.ownerUid == resource.data.ownerUid
+          )
+        ) &&
+        (
+          !isCreate ||
+          data.createdAt == request.time
+        );
+    }
+
+    function isValidTeamActionMapCreate(teamId) {
+      return teamId == request.resource.data.teamId &&
+        isValidTeamActionMapPayload(teamId, true);
+    }
+
+    function isValidTeamActionMapUpdate(teamId) {
+      return teamId == resource.data.teamId &&
+        resource.data.ownerUid == request.auth.uid &&
+        request.resource.data.teamId == teamId &&
+        isValidTeamActionMapPayload(teamId, false);
+    }
+
+    function canReadTeamActionMap(teamId) {
+      return isAdmin() ||
+        isTeamOwnedByAuth(teamId) ||
+        isActiveTeamMember(teamId);
+    }
+
+    match /teamActionMaps/{teamId} {
+      allow create: if isAdmin() || isValidTeamActionMapCreate(teamId);
+
+      allow read: if canReadTeamActionMap(teamId);
+
+      allow update: if isAdmin() || isValidTeamActionMapUpdate(teamId);
+
+      allow delete: if isAdmin();
+    }
+
+    function isValidTeamActionMapReviewWeeklyStatus(status) {
+      return status in ['green', 'yellow', 'red'];
+    }
+
+    function isValidTeamActionMapReviewDateValue(value) {
+      return value == null || (value is string && value.size() > 0 && value.size() <= 32);
+    }
+
+    function isValidTeamActionMapReviewPayload(isCreate) {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'teamId',
+        'roadmapId',
+        'ownerUid',
+        'weekLabel',
+        'weekStartDate',
+        'weekEndDate',
+        'progressSummary',
+        'blockers',
+        'nextAdjustments',
+        'weeklyStatus',
+        'createdAt',
+        'updatedAt',
+      ];
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        data.keys().hasOnly(allowedKeys) &&
+        data.teamId is string &&
+        data.teamId.size() > 0 &&
+        data.roadmapId is string &&
+        data.roadmapId.size() > 0 &&
+        data.ownerUid is string &&
+        data.ownerUid.size() > 0 &&
+        data.weekLabel is string &&
+        data.weekLabel.size() > 0 &&
+        data.weekLabel.size() <= 200 &&
+        isValidTeamActionMapReviewDateValue(data.weekStartDate) &&
+        isValidTeamActionMapReviewDateValue(data.weekEndDate) &&
+        data.progressSummary is string &&
+        data.progressSummary.size() <= 2000 &&
+        data.blockers is string &&
+        data.blockers.size() <= 2000 &&
+        data.nextAdjustments is string &&
+        data.nextAdjustments.size() <= 2000 &&
+        isValidTeamActionMapReviewWeeklyStatus(data.weeklyStatus) &&
+        isTeamOwnedByAuth(data.teamId) &&
+        data.ownerUid == request.auth.uid &&
+        (
+          isCreate ?
+            data.createdAt == request.time &&
+            data.updatedAt == request.time :
+            data.createdAt == resource.data.createdAt &&
+            data.updatedAt == request.time &&
+            data.teamId == resource.data.teamId &&
+            data.roadmapId == resource.data.roadmapId &&
+            data.ownerUid == resource.data.ownerUid
+        );
+    }
+
+    function isValidTeamActionMapReviewCreate() {
+      return isValidTeamActionMapReviewPayload(true);
+    }
+
+    function isValidTeamActionMapReviewUpdate() {
+      return isValidTeamActionMapReviewPayload(false);
+    }
+
+    // teamActionMapReviews/{reviewId}
+    // PERMITE:
+    //   - create/update: owner del team.
+    //   - read: admin, owner o miembro activo del team.
+    //   - delete: admin.
+    match /teamActionMapReviews/{reviewId} {
+      allow create: if isAdmin() || isValidTeamActionMapReviewCreate();
+
+      allow read: if isAdmin() || canReadTeamActionMap(resource.data.teamId);
+
+      allow update: if isAdmin() || isValidTeamActionMapReviewUpdate();
+
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // recognitionWeeklySnapshots/{snapshotId}
+    // PERMITE:
+    //   - create/update: owner del team (publica ranking semanal agregado).
+    //   - read: admin, owner o miembro activo solo si isPublished == true.
+    // BLOQUEA:
+    //   - Lectura pública y edición por miembros.
+    // -------------------------------------------------------------------------
+    function getAuthOwnedTeamId() {
+      let user = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+
+      return user.keys().hasAll(['ownedTeamId']) &&
+        user.ownedTeamId is string &&
+        user.ownedTeamId.size() > 0
+        ? user.ownedTeamId
+        : '';
+    }
+
+    function isRecognitionSnapshotIdForTeam(snapshotId, teamId) {
+      return teamId is string &&
+        teamId.size() > 0 &&
+        snapshotId.matches('^' + teamId + '_\\d{4}-\\d{2}-\\d{2}_\\d{4}-\\d{2}-\\d{2}$');
+    }
+
+    function canProbeMissingRecognitionSnapshot(snapshotId) {
+      let ownedTeamId = getAuthOwnedTeamId();
+      let homeTeamId = getAuthHomeTeamId();
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        (
+          (
+            ownedTeamId.size() > 0 &&
+            isTeamOwnedByAuth(ownedTeamId) &&
+            isRecognitionSnapshotIdForTeam(snapshotId, ownedTeamId)
+          ) ||
+          (
+            homeTeamId.size() > 0 &&
+            isActiveTeamMember(homeTeamId) &&
+            isRecognitionSnapshotIdForTeam(snapshotId, homeTeamId)
+          )
+        );
+    }
+
+    function canReadRecognitionWeeklySnapshot(snapshotId) {
+      return isAdmin() ||
+        (
+          resource != null &&
+          (
+            isTeamOwnedByAuth(resource.data.teamId) ||
+            (
+              resource.data.isPublished == true &&
+              isActiveTeamMember(resource.data.teamId)
+            )
+          )
+        ) ||
+        (
+          resource == null &&
+          canProbeMissingRecognitionSnapshot(snapshotId)
+        );
+    }
+
+    function isValidRecognitionWeeklySnapshotPayload(snapshotId, isCreate) {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'teamId',
+        'weekKey',
+        'weekLabel',
+        'weekStartDate',
+        'weekEndDate',
+        'generatedByUid',
+        'generatedAt',
+        'podium',
+        'ranking',
+        'isPublished',
+      ];
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        data.keys().hasOnly(allowedKeys) &&
+        data.teamId is string &&
+        data.teamId.size() > 0 &&
+        isTeamOwnedByAuth(data.teamId) &&
+        data.weekKey is string &&
+        data.weekKey.size() > 0 &&
+        data.weekLabel is string &&
+        data.weekStartDate is string &&
+        data.weekEndDate is string &&
+        data.generatedByUid == request.auth.uid &&
+        data.generatedAt == request.time &&
+        data.isPublished == true &&
+        snapshotId == data.teamId + '_' + data.weekKey &&
+        data.podium is list &&
+        data.ranking is list &&
+        (isCreate || (
+          resource.data.teamId == data.teamId &&
+          resource.data.weekKey == data.weekKey
+        ));
+    }
+
+    match /recognitionWeeklySnapshots/{snapshotId} {
+      allow create: if isAdmin() || isValidRecognitionWeeklySnapshotPayload(snapshotId, true);
+
+      allow read: if canReadRecognitionWeeklySnapshot(snapshotId);
+
+      allow update: if isAdmin() || isValidRecognitionWeeklySnapshotPayload(snapshotId, false);
+
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // teamRecognitions/{recognitionId}
+    // PERMITE:
+    //   - create: owner del team para miembros activos.
+    //   - read: admin, owner o miembro según visibilidad.
+    //   - update/delete: admin u owner del team.
+    // BLOQUEA:
+    //   - Creación por miembros y lectura pública.
+    // -------------------------------------------------------------------------
+    function isValidTeamRecognitionType(type) {
+      return type in ['commitment', 'consistency', 'attitude', 'training', 'leadership', 'progress', 'team_spirit'];
+    }
+
+    function isValidTeamRecognitionVisibility(visibility) {
+      return visibility in ['team', 'private'];
+    }
+
+    function isActiveTeamRecognitionRecipient(teamId, recipientUid) {
+      let memberDocId = teamId + '_' + recipientUid;
+
+      return exists(/databases/$(database)/documents/teamMembers/$(memberDocId)) &&
+        get(/databases/$(database)/documents/teamMembers/$(memberDocId)).data.teamId == teamId &&
+        get(/databases/$(database)/documents/teamMembers/$(memberDocId)).data.status == 'active';
+    }
+
+    function isValidTeamRecognitionCreate() {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'teamId',
+        'senderUid',
+        'senderName',
+        'recipientUid',
+        'recipientName',
+        'recipientEmail',
+        'type',
+        'title',
+        'message',
+        'visibility',
+        'createdAt',
+        'updatedAt',
+      ];
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        data.keys().hasOnly(allowedKeys) &&
+        data.teamId is string &&
+        data.teamId.size() > 0 &&
+        isTeamOwnedByAuth(data.teamId) &&
+        data.senderUid == request.auth.uid &&
+        data.senderName is string &&
+        data.senderName.size() > 0 &&
+        data.senderName.size() <= 120 &&
+        data.recipientUid is string &&
+        data.recipientUid.size() > 0 &&
+        data.recipientName is string &&
+        data.recipientName.size() > 0 &&
+        data.recipientName.size() <= 120 &&
+        (
+          !('recipientEmail' in data) ||
+          data.recipientEmail == null ||
+          (data.recipientEmail is string && data.recipientEmail.size() <= 320)
+        ) &&
+        isValidTeamRecognitionType(data.type) &&
+        isValidTeamRecognitionVisibility(data.visibility) &&
+        data.title is string &&
+        data.title.size() > 0 &&
+        data.title.size() <= 120 &&
+        data.message is string &&
+        data.message.size() > 0 &&
+        data.message.size() <= 1000 &&
+        data.createdAt == request.time &&
+        data.updatedAt == request.time &&
+        isActiveTeamRecognitionRecipient(data.teamId, data.recipientUid);
+    }
+
+    function canReadTeamRecognition() {
+      return isAdmin() ||
+        isTeamOwnedByAuth(resource.data.teamId) ||
+        (
+          isActiveTeamMember(resource.data.teamId) &&
+          (
+            resource.data.visibility == 'team' ||
+            resource.data.recipientUid == request.auth.uid
+          )
+        );
+    }
+
+    match /teamRecognitions/{recognitionId} {
+      allow create: if isAdmin() || isValidTeamRecognitionCreate();
+
+      allow read: if canReadTeamRecognition();
+
+      allow update, delete: if isAdmin() || isTeamOwnedByAuth(resource.data.teamId);
+    }
+
+    // -------------------------------------------------------------------------
+    // recognitionMonthlyPrizes/{teamId}
+    // PERMITE:
+    //   - read: admin, owner o miembro activo del team.
+    //   - create/update: admin u owner del team.
+    //   - delete: admin.
+    // -------------------------------------------------------------------------
+    function isValidRecognitionMonthlyPrizesPayload(teamId, isCreate) {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'teamId',
+        'ownerUid',
+        'firstPrize',
+        'secondPrize',
+        'thirdPrize',
+        'isActive',
+        'createdAt',
+        'updatedAt',
+      ];
+
+      return data.keys().hasOnly(allowedKeys) &&
+        data.teamId == teamId &&
+        data.ownerUid == request.auth.uid &&
+        data.firstPrize is string &&
+        data.firstPrize.size() <= 120 &&
+        data.secondPrize is string &&
+        data.secondPrize.size() <= 120 &&
+        data.thirdPrize is string &&
+        data.thirdPrize.size() <= 120 &&
+        data.isActive == true &&
+        data.updatedAt == request.time &&
+        isTeamOwnedByAuth(teamId) &&
+        (
+          isCreate ||
+          (
+            data.createdAt == resource.data.createdAt &&
+            data.teamId == resource.data.teamId &&
+            data.ownerUid == resource.data.ownerUid
+          )
+        ) &&
+        (
+          !isCreate ||
+          data.createdAt == request.time
+        );
+    }
+
+    function canReadRecognitionMonthlyPrizes(teamId) {
+      return isAdmin() ||
+        isTeamOwnedByAuth(teamId) ||
+        isActiveTeamMember(teamId);
+    }
+
+    match /recognitionMonthlyPrizes/{teamId} {
+      allow create: if isAdmin() ||
+        (
+          teamId == request.resource.data.teamId &&
+          isValidRecognitionMonthlyPrizesPayload(teamId, true)
+        );
+
+      allow read: if canReadRecognitionMonthlyPrizes(teamId);
+
+      allow update: if isAdmin() ||
+        (
+          teamId == resource.data.teamId &&
+          resource.data.ownerUid == request.auth.uid &&
+          request.resource.data.teamId == teamId &&
+          isValidRecognitionMonthlyPrizesPayload(teamId, false)
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // teamSalesGoals/{goalId}
+    // PERMITE:
+    //   - read: admin, owner o miembro activo del team.
+    //   - create/update: admin u owner del team.
+    //   - delete: admin u owner del team.
+    // -------------------------------------------------------------------------
+    function isValidSalesGoalCurrency(currency) {
+      return currency in ['EUR', 'USD'];
+    }
+
+    function isValidSalesGoalPeriodType(periodType) {
+      return periodType in ['weekly', 'monthly'];
+    }
+
+    function isValidSalesGoalStatus(status) {
+      return status in ['active', 'closed'];
+    }
+
+    function isValidTeamSalesGoalPayload(isCreate) {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'teamId',
+        'ownerUid',
+        'periodType',
+        'periodKey',
+        'periodLabel',
+        'currency',
+        'targetAmount',
+        'currentAmount',
+        'description',
+        'status',
+        'recognitionEligible',
+        'createdAt',
+        'updatedAt',
+      ];
+
+      return data.keys().hasOnly(allowedKeys) &&
+        data.teamId is string &&
+        data.teamId.size() > 0 &&
+        data.ownerUid == request.auth.uid &&
+        isValidSalesGoalPeriodType(data.periodType) &&
+        data.periodKey is string &&
+        data.periodKey.size() > 0 &&
+        data.periodKey.size() <= 80 &&
+        data.periodLabel is string &&
+        data.periodLabel.size() > 0 &&
+        data.periodLabel.size() <= 120 &&
+        isValidSalesGoalCurrency(data.currency) &&
+        data.targetAmount is number &&
+        data.targetAmount > 0 &&
+        data.currentAmount is number &&
+        data.currentAmount >= 0 &&
+        (data.description == null || (data.description is string && data.description.size() <= 200)) &&
+        isValidSalesGoalStatus(data.status) &&
+        data.updatedAt == request.time &&
+        isTeamOwnedByAuth(data.teamId) &&
+        (
+          isCreate ||
+          (
+            data.createdAt == resource.data.createdAt &&
+            data.teamId == resource.data.teamId &&
+            data.ownerUid == resource.data.ownerUid
+          )
+        ) &&
+        (
+          !isCreate ||
+          data.createdAt == request.time
+        );
+    }
+
+    function canReadTeamSalesGoal(teamId) {
+      return isAdmin() ||
+        isTeamOwnedByAuth(teamId) ||
+        isActiveTeamMember(teamId);
+    }
+
+    function isSalesGoalIdForTeam(goalId, teamId) {
+      return teamId is string &&
+        teamId.size() > 0 &&
+        goalId.matches('^' + teamId + '_(weekly|monthly)_.+$');
+    }
+
+    function canProbeMissingTeamSalesGoal(goalId) {
+      let ownedTeamId = getAuthOwnedTeamId();
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        ownedTeamId.size() > 0 &&
+        isTeamOwnedByAuth(ownedTeamId) &&
+        isSalesGoalIdForTeam(goalId, ownedTeamId);
+    }
+
+    function canReadTeamSalesGoalDoc(goalId) {
+      return isAdmin() ||
+        (
+          resource != null &&
+          canReadTeamSalesGoal(resource.data.teamId)
+        ) ||
+        (
+          resource == null &&
+          canProbeMissingTeamSalesGoal(goalId)
+        );
+    }
+
+    function isValidTeamSalesGoalCloseUpdate() {
+      let data = request.resource.data;
+
+      return isTeamOwnedByAuth(resource.data.teamId) &&
+        data.teamId == resource.data.teamId &&
+        data.ownerUid == resource.data.ownerUid &&
+        data.periodType == resource.data.periodType &&
+        data.periodKey == resource.data.periodKey &&
+        data.status == 'closed' &&
+        resource.data.status == 'active' &&
+        data.updatedAt == request.time &&
+        data.createdAt == resource.data.createdAt;
+    }
+
+    match /teamSalesGoals/{goalId} {
+      allow create: if isAdmin() || isValidTeamSalesGoalPayload(true);
+
+      allow read: if canReadTeamSalesGoalDoc(goalId);
+
+      allow update: if isAdmin() ||
+        (
+          isTeamOwnedByAuth(resource.data.teamId) &&
+          (
+            isValidTeamSalesGoalPayload(false) ||
+            isValidTeamSalesGoalCloseUpdate()
+          )
+        );
+
+      allow delete: if isAdmin() || isTeamOwnedByAuth(resource.data.teamId);
+    }
+
+    // -------------------------------------------------------------------------
+    // teamSalesReports/{reportId}
+    // PERMITE:
+    //   - create: miembro activo reportando venta propia.
+    //   - read: admin, owner o miembro leyendo sus propios reportes.
+    //   - update: admin u owner validando/rechazando.
+    //   - delete: admin.
+    // -------------------------------------------------------------------------
+    function isValidSalesReportStatus(status) {
+      return status in ['reported', 'validated', 'rejected'];
+    }
+
+    function isValidTeamSalesReportCreate() {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'teamId',
+        'goalId',
+        'memberUid',
+        'memberName',
+        'amount',
+        'currency',
+        'note',
+        'status',
+        'reportedAt',
+        'validatedAt',
+        'validatedByUid',
+        'recognitionPointsPending',
+        'createdAt',
+        'updatedAt',
+      ];
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        data.keys().hasOnly(allowedKeys) &&
+        data.teamId is string &&
+        data.teamId.size() > 0 &&
+        data.goalId is string &&
+        data.goalId.size() > 0 &&
+        data.memberUid == request.auth.uid &&
+        data.memberName is string &&
+        data.memberName.size() > 0 &&
+        data.memberName.size() <= 120 &&
+        isValidSalesGoalCurrency(data.currency) &&
+        data.amount is number &&
+        data.amount > 0 &&
+        (data.note == null || (data.note is string && data.note.size() <= 200)) &&
+        data.status == 'reported' &&
+        data.reportedAt == request.time &&
+        (
+          !('validatedAt' in data) ||
+          data.validatedAt == null
+        ) &&
+        (
+          !('validatedByUid' in data) ||
+          data.validatedByUid == null
+        ) &&
+        data.recognitionPointsPending == true &&
+        data.createdAt == request.time &&
+        data.updatedAt == request.time &&
+        isActiveTeamMember(data.teamId);
+    }
+
+    function canReadTeamSalesReport() {
+      return isAdmin() ||
+        isTeamOwnedByAuth(resource.data.teamId) ||
+        (
+          isActiveTeamMember(resource.data.teamId) &&
+          resource.data.memberUid == request.auth.uid
+        );
+    }
+
+    function isValidTeamSalesReportUpdate() {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'teamId',
+        'goalId',
+        'memberUid',
+        'memberName',
+        'amount',
+        'currency',
+        'note',
+        'status',
+        'reportedAt',
+        'validatedAt',
+        'validatedByUid',
+        'recognitionPointsPending',
+        'createdAt',
+        'updatedAt',
+      ];
+
+      return data.keys().hasOnly(allowedKeys) &&
+        data.teamId == resource.data.teamId &&
+        data.goalId == resource.data.goalId &&
+        data.memberUid == resource.data.memberUid &&
+        data.memberName == resource.data.memberName &&
+        data.amount == resource.data.amount &&
+        data.currency == resource.data.currency &&
+        data.note == resource.data.note &&
+        data.reportedAt == resource.data.reportedAt &&
+        data.createdAt == resource.data.createdAt &&
+        isValidSalesReportStatus(data.status) &&
+        data.updatedAt == request.time &&
+        isTeamOwnedByAuth(resource.data.teamId) &&
+        (
+          (
+            resource.data.status == 'reported' &&
+            data.status == 'validated' &&
+            data.validatedAt == request.time &&
+            data.validatedByUid == request.auth.uid &&
+            data.recognitionPointsPending == true
+          ) ||
+          (
+            resource.data.status == 'reported' &&
+            data.status == 'rejected' &&
+            data.validatedAt == null &&
+            data.validatedByUid == null &&
+            data.recognitionPointsPending == false
+          )
+        );
+    }
+
+    match /teamSalesReports/{reportId} {
+      allow create: if isAdmin() || isValidTeamSalesReportCreate();
+
+      allow read: if canReadTeamSalesReport();
+
+      allow update: if isAdmin() || isValidTeamSalesReportUpdate();
+
+      allow delete: if isAdmin();
+    }
+
+    function referralRewardAmountForLevel(level) {
+      return level == 1 ? 30 : level == 2 ? 20 : level == 3 ? 10 : -1;
+    }
+
+    function isValidReferralRewardStatus(status) {
+      return status == 'pending' ||
+        status == 'approved' ||
+        status == 'payable' ||
+        status == 'requested' ||
+        status == 'paid' ||
+        status == 'cancelled';
+    }
+
+    function isValidReferralRewardLevel(level) {
+      return level == 1 || level == 2 || level == 3;
+    }
+
+    function isValidReferralRewardCreate(rewardDocId) {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'rewardId',
+        'activationRequestId',
+        'activatedUserUid',
+        'activatedUserName',
+        'activatedUserEmail',
+        'beneficiaryUid',
+        'beneficiaryName',
+        'beneficiaryEmail',
+        'level',
+        'amount',
+        'currency',
+        'source',
+        'status',
+        'reason',
+        'payoutRequestId',
+        'createdAt',
+        'updatedAt',
+        'approvedAt',
+        'payableAt',
+        'requestedAt',
+        'paidAt',
+        'cancelledAt',
+        'metadata',
+      ];
+
+      return isAdmin() &&
+        data.keys().hasOnly(allowedKeys) &&
+        data.rewardId == rewardDocId &&
+        data.rewardId is string &&
+        data.rewardId.size() > 0 &&
+        data.activationRequestId is string &&
+        data.activationRequestId.size() > 0 &&
+        data.activatedUserUid is string &&
+        data.activatedUserUid.size() > 0 &&
+        data.beneficiaryUid is string &&
+        data.beneficiaryUid.size() > 0 &&
+        data.activatedUserUid != data.beneficiaryUid &&
+        isValidReferralRewardLevel(data.level) &&
+        data.amount == referralRewardAmountForLevel(data.level) &&
+        data.currency == 'EUR' &&
+        data.source == 'group_activation' &&
+        data.status == 'payable' &&
+        data.payableAt == request.time &&
+        data.createdAt == request.time &&
+        data.updatedAt == request.time;
+    }
+
+    function isValidReferralRewardUpdate() {
+      let data = request.resource.data;
+      let previous = resource.data;
+
+      return isAdmin() &&
+        data.rewardId == previous.rewardId &&
+        data.activationRequestId == previous.activationRequestId &&
+        data.activatedUserUid == previous.activatedUserUid &&
+        data.beneficiaryUid == previous.beneficiaryUid &&
+        data.level == previous.level &&
+        data.amount == previous.amount &&
+        data.currency == previous.currency &&
+        data.source == previous.source &&
+        data.createdAt == previous.createdAt &&
+        isValidReferralRewardStatus(data.status);
+    }
+
+    // -------------------------------------------------------------------------
+    // referralRewards/{rewardId}
+    // PERMITE:
+    //   - read: admin o beneficiario de la recompensa.
+    //   - create/update/delete: solo admin.
+    // BLOQUEA:
+    //   - Escritura por usuarios normales.
+    //   - Lectura cruzada de recompensas ajenas.
+    // -------------------------------------------------------------------------
+    match /referralRewards/{rewardId} {
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.beneficiaryUid == request.auth.uid
+      );
+
+      allow create: if isValidReferralRewardCreate(rewardId);
+
+      allow update: if isValidReferralRewardUpdate();
+
+      allow delete: if isAdmin();
+    }
+
+    function isValidReferralPayoutRequestStatus(status) {
+      return status == 'pending' ||
+        status == 'approved' ||
+        status == 'paid' ||
+        status == 'rejected' ||
+        status == 'cancelled';
+    }
+
+    // -------------------------------------------------------------------------
+    // referralPayoutRequests/{requestId}
+    // PERMITE:
+    //   - read: admin o solicitante (userUid).
+    //   - create: bloqueado (solo Cloud Functions Admin SDK).
+    //   - update/delete: solo admin (panel futuro; callables usan Admin SDK).
+    // BLOQUEA:
+    //   - Creación/edición directa por usuarios normales.
+    // -------------------------------------------------------------------------
+    match /referralPayoutRequests/{requestId} {
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.userUid == request.auth.uid
+      );
+
+      allow create: if false;
+
+      allow update: if isAdmin() &&
+        isValidReferralPayoutRequestStatus(request.resource.data.status);
+
+      allow delete: if isAdmin();
     }
 
     // -------------------------------------------------------------------------

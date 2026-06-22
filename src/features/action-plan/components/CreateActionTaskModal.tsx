@@ -2,6 +2,7 @@ import { Loader2, X } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Button, Input, Textarea } from '@/components/ui'
 import type { CreateActionTaskInput } from '@/features/action-plan/types/action-plan.types'
+import type { TeamMapArea } from '@/features/action-plan/types/team-action-map.types'
 import {
   ACTION_TASK_PRIORITY_OPTIONS,
   ACTION_TASK_STATUS_OPTIONS,
@@ -13,10 +14,19 @@ import {
   type ActionTaskFormErrors,
   type ActionTaskFormValues,
 } from '@/features/action-plan/utils/actionTaskForm'
+import { buildActionTaskResponsiblePayload } from '@/features/action-plan/utils/actionTaskRoadmapUtils'
+
+export type ActionTaskTeamMemberOption = {
+  uid: string
+  name: string
+}
 
 type CreateActionTaskModalProps = {
   open: boolean
   isSubmitting: boolean
+  managedTeamId?: string | null
+  roadmapAreas?: TeamMapArea[]
+  teamMembers?: ActionTaskTeamMemberOption[]
   onClose: () => void
   onSubmit: (data: CreateActionTaskInput) => Promise<void>
 }
@@ -27,12 +37,18 @@ const selectClassName =
 export function CreateActionTaskModal({
   open,
   isSubmitting,
+  managedTeamId = null,
+  roadmapAreas = [],
+  teamMembers = [],
   onClose,
   onSubmit,
 }: CreateActionTaskModalProps) {
   const [values, setValues] = useState<ActionTaskFormValues>(DEFAULT_ACTION_TASK_FORM)
   const [fieldErrors, setFieldErrors] = useState<ActionTaskFormErrors>({})
   const [submitError, setSubmitError] = useState('')
+
+  const showRoadmapSection = Boolean(managedTeamId && roadmapAreas.length > 0)
+  const selectableMembers = teamMembers.filter((member) => member.uid.trim().length > 0)
 
   useEffect(() => {
     if (!open) {
@@ -75,14 +91,39 @@ export function CreateActionTaskModal({
     setFieldErrors({})
     setSubmitError('')
 
+    const selectedArea = roadmapAreas.find((area) => area.id === values.areaId)
+
+    const payload: CreateActionTaskInput = {
+      title: values.title.trim(),
+      description: values.description.trim(),
+      status: values.status as CreateActionTaskInput['status'],
+      priority: values.priority as CreateActionTaskInput['priority'],
+      dueDate: values.dueDate.trim() || undefined,
+    }
+
+    if (showRoadmapSection) {
+      payload.startDate = values.startDate.trim() || undefined
+      Object.assign(
+        payload,
+        buildActionTaskResponsiblePayload({
+          responsibleType: values.responsibleType,
+          responsibleMemberUid: values.responsibleMemberUid,
+          responsibleMemberName:
+            selectableMembers.find((member) => member.uid === values.responsibleMemberUid)?.name ??
+            '',
+        }),
+      )
+
+      if (selectedArea && managedTeamId) {
+        payload.areaId = selectedArea.id
+        payload.areaTitle = selectedArea.title
+        payload.roadmapId = managedTeamId
+        payload.roadmapTeamId = managedTeamId
+      }
+    }
+
     try {
-      await onSubmit({
-        title: values.title.trim(),
-        description: values.description.trim(),
-        status: values.status as CreateActionTaskInput['status'],
-        priority: values.priority as CreateActionTaskInput['priority'],
-        dueDate: values.dueDate.trim() || undefined,
-      })
+      await onSubmit(payload)
     } catch (error) {
       setSubmitError(
         error instanceof Error
@@ -225,6 +266,113 @@ export function CreateActionTaskModal({
               ) : null}
             </div>
           </div>
+
+          {showRoadmapSection ? (
+            <div className="rounded-xl border border-petrol-dark/10 bg-petrol-dark/[0.03] p-4">
+              <h3 className="text-sm font-semibold text-text-dark">Conectar con el Mapa de Ruta</h3>
+              <p className="mt-1 text-xs leading-relaxed text-text-soft">
+                Conecta esta acción con un área para que el equipo entienda por qué es importante.
+              </p>
+
+              <div className="mt-4 space-y-4">
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="action-task-area" className="text-sm font-medium text-text-dark">
+                    Área del mapa
+                  </label>
+                  <select
+                    id="action-task-area"
+                    value={values.areaId}
+                    disabled={isSubmitting}
+                    onChange={(event) =>
+                      setValues((current) => ({ ...current, areaId: event.target.value }))
+                    }
+                    className={selectClassName}
+                  >
+                    <option value="">Sin área específica</option>
+                    {roadmapAreas.map((area) => (
+                      <option key={area.id} value={area.id}>
+                        {area.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label
+                    htmlFor="action-task-responsible"
+                    className="text-sm font-medium text-text-dark"
+                  >
+                    Responsable
+                  </label>
+                  <select
+                    id="action-task-responsible"
+                    value={values.responsibleType}
+                    disabled={isSubmitting}
+                    onChange={(event) =>
+                      setValues((current) => ({
+                        ...current,
+                        responsibleType: event.target.value as ActionTaskFormValues['responsibleType'],
+                        responsibleMemberUid:
+                          event.target.value === 'member' ? current.responsibleMemberUid : '',
+                      }))
+                    }
+                    className={selectClassName}
+                  >
+                    <option value="all">Todos los miembros</option>
+                    <option value="leader">Líder</option>
+                    {selectableMembers.length > 0 ? (
+                      <option value="member">Miembro específico</option>
+                    ) : null}
+                  </select>
+                </div>
+
+                {values.responsibleType === 'member' && selectableMembers.length > 0 ? (
+                  <div className="flex flex-col gap-1.5">
+                    <label
+                      htmlFor="action-task-responsible-member"
+                      className="text-sm font-medium text-text-dark"
+                    >
+                      Miembro responsable
+                    </label>
+                    <select
+                      id="action-task-responsible-member"
+                      value={values.responsibleMemberUid}
+                      disabled={isSubmitting}
+                      onChange={(event) =>
+                        setValues((current) => ({
+                          ...current,
+                          responsibleMemberUid: event.target.value,
+                        }))
+                      }
+                      className={selectClassName}
+                    >
+                      <option value="">Selecciona un miembro</option>
+                      {selectableMembers.map((member) => (
+                        <option key={member.uid} value={member.uid}>
+                          {member.name}
+                        </option>
+                      ))}
+                    </select>
+                    {fieldErrors.responsibleMemberUid ? (
+                      <p className="text-sm text-red-600">{fieldErrors.responsibleMemberUid}</p>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                <Input
+                  label="Fecha de inicio"
+                  name="startDate"
+                  type="date"
+                  value={values.startDate}
+                  disabled={isSubmitting}
+                  helperText="Opcional."
+                  onChange={(event) =>
+                    setValues((current) => ({ ...current, startDate: event.target.value }))
+                  }
+                />
+              </div>
+            </div>
+          ) : null}
 
           <Input
             label="Fecha límite"

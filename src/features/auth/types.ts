@@ -2,7 +2,10 @@ export type RegisterInput = {
   displayName: string
   email: string
   password: string
+  /** Legacy path param `/registro/:referralCode` */
   referralCodeFromUrl?: string
+  /** Query param `?ref=` for commercial recommendation */
+  recommendationCodeFromUrl?: string
   inviteCode?: string
 }
 
@@ -16,5 +19,6 @@ export type LoginInput = {
 
 export type GoogleRegisterInput = {
   referralCodeFromUrl?: string
+  recommendationCodeFromUrl?: string
   inviteCode?: string
 }

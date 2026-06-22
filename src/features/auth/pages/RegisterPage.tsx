@@ -4,6 +4,7 @@ import { Button, Input } from '@/components/ui'
 import { useToast } from '@/components/ui/toast/ToastProvider'
 import { TERMS_AND_CONDITIONS_URL } from '@/config/legal'
 import { RegisterInviteCard } from '@/features/auth/components/RegisterInviteCard'
+import { RegisterRecommendationCard } from '@/features/auth/components/RegisterRecommendationCard'
 import { authInputClassName, authLabelClassName, AuthCard } from '@/features/auth/components/AuthCard'
 import { AuthDivider } from '@/features/auth/components/AuthDivider'
 import { AuthLayout } from '@/features/auth/components/AuthLayout'
@@ -12,6 +13,8 @@ import { PasswordInput } from '@/features/auth/components/PasswordInput'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { getPostAuthRedirect } from '@/features/auth/utils/getDashboardPathByRole'
 import { useInviteValidation } from '@/features/team/hooks/useInviteValidation'
+import { useRecommendationValidation } from '@/features/referrals/hooks/useRecommendationValidation'
+import { normalizeRecommendationCodeParam } from '@/features/referrals/utils/recommendationUtils'
 import { getFirebaseAuth } from '@/lib/firebase'
 
 type RegisterFormErrors = {
@@ -54,7 +57,11 @@ export function RegisterPage() {
   const { referralCode } = useParams<{ referralCode?: string }>()
   const [searchParams] = useSearchParams()
   const inviteCodeParam = searchParams.get('invite')?.trim() || undefined
+  const recommendationCodeParam =
+    normalizeRecommendationCodeParam(searchParams.get('ref')) ??
+    normalizeRecommendationCodeParam(referralCode)
   const inviteValidation = useInviteValidation(inviteCodeParam)
+  const recommendationValidation = useRecommendationValidation(recommendationCodeParam)
   const { currentUser, initialized, isEmailVerified, appUser, loading, registerWithEmail, registerWithGoogle } =
     useAuth()
 
@@ -68,6 +75,11 @@ export function RegisterPage() {
   const [googleSubmitting, setGoogleSubmitting] = useState(false)
 
   const activeInviteCode = inviteValidation.isValid ? inviteValidation.inviteCode : undefined
+  const activeRecommendationCode = recommendationValidation.isValid
+    ? recommendationValidation.recommendationCode
+    : undefined
+
+  const isValidatingLinks = inviteValidation.loading || recommendationValidation.loading
 
   if (initialized && currentUser) {
     return <Navigate to={getPostAuthRedirect(isEmailVerified, appUser?.role)} replace />
@@ -90,7 +102,12 @@ export function RegisterPage() {
       return
     }
 
-    if (inviteValidation.hasInviteParam && inviteValidation.loading) {
+    if (isValidatingLinks) {
+      return
+    }
+
+    if (recommendationValidation.hasRefParam && !inviteValidation.isValid && !recommendationValidation.isValid) {
+      setError('El código de recomendación no es válido o ya no está activo.')
       return
     }
 
@@ -102,6 +119,7 @@ export function RegisterPage() {
         email: email.trim(),
         password,
         referralCodeFromUrl: referralCode,
+        recommendationCodeFromUrl: activeRecommendationCode,
         inviteCode: activeInviteCode,
       })
       navigate('/verificar-email', { replace: true })
@@ -115,7 +133,12 @@ export function RegisterPage() {
   async function handleGoogleRegister() {
     setError('')
 
-    if (inviteValidation.hasInviteParam && inviteValidation.loading) {
+    if (isValidatingLinks) {
+      return
+    }
+
+    if (recommendationValidation.hasRefParam && !inviteValidation.isValid && !recommendationValidation.isValid) {
+      setError('El código de recomendación no es válido o ya no está activo.')
       return
     }
 
@@ -124,6 +147,7 @@ export function RegisterPage() {
     try {
       const redirectPath = await registerWithGoogle({
         referralCodeFromUrl: referralCode,
+        recommendationCodeFromUrl: activeRecommendationCode,
         inviteCode: activeInviteCode,
       })
       const displayName = getFirebaseAuth().currentUser?.displayName?.trim()
@@ -139,7 +163,7 @@ export function RegisterPage() {
     }
   }
 
-  const isBusy = loading || submitting || googleSubmitting || inviteValidation.loading
+  const isBusy = loading || submitting || googleSubmitting || isValidatingLinks
 
   return (
     <AuthLayout>
@@ -150,7 +174,9 @@ export function RegisterPage() {
             <p className="text-sm text-hero-text/70">
               {inviteValidation.isValid
                 ? 'Completa tus datos para unirte al grupo.'
-                : 'Regístrate para comenzar a captar prospectos y gestionar tu crecimiento.'}
+                : recommendationValidation.isValid
+                  ? 'Completa tus datos para registrarte por recomendación.'
+                  : 'Regístrate para comenzar a captar prospectos y gestionar tu crecimiento.'}
             </p>
           </div>
 
@@ -160,6 +186,13 @@ export function RegisterPage() {
             hasInviteParam={inviteValidation.hasInviteParam}
             teamName={inviteValidation.team?.name}
             message={inviteValidation.message}
+          />
+
+          <RegisterRecommendationCard
+            loading={recommendationValidation.loading}
+            isValid={recommendationValidation.isValid}
+            hasRefParam={recommendationValidation.hasRefParam}
+            message={recommendationValidation.message}
           />
         </div>
 
@@ -221,7 +254,13 @@ export function RegisterPage() {
             className="mt-2 h-11 w-full bg-gold text-hero-bg hover:bg-gold-light"
             disabled={isBusy}
           >
-            {isBusy ? 'Creando cuenta...' : inviteValidation.isValid ? 'Unirme al grupo' : 'Crear cuenta'}
+            {isBusy
+              ? 'Creando cuenta...'
+              : inviteValidation.isValid
+                ? 'Unirme al grupo'
+                : recommendationValidation.isValid
+                  ? 'Registrarme por recomendación'
+                  : 'Crear cuenta'}
           </Button>
         </form>
 

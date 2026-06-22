@@ -166,6 +166,22 @@ export const router = createBrowserRouter([
         },
       },
       {
+        path: 'dashboard/progreso-equipo',
+        lazy: async () => {
+          const { TeamProgressPage } = await import(
+            '@/features/team-progress/pages/TeamProgressPage'
+          )
+          const { TeamProgressRoute } = await import('@/app/router/TeamProgressRoute')
+          return {
+            Component: () => (
+              <TeamProgressRoute>
+                <TeamProgressPage />
+              </TeamProgressRoute>
+            ),
+          }
+        },
+      },
+      {
         path: 'dashboard/plan',
         lazy: async () => {
           const { PlanDashboardPage } = await import('@/features/dashboard/pages/PlanDashboardPage')
@@ -180,12 +196,28 @@ export const router = createBrowserRouter([
         },
       },
       {
+        path: 'dashboard/recompensas',
+        lazy: async () => {
+          const { ReferralRewardsDashboardPage } = await import(
+            '@/features/dashboard/pages/ReferralRewardsDashboardPage'
+          )
+          return { Component: ReferralRewardsDashboardPage }
+        },
+      },
+      {
         path: 'dashboard/reconocimientos',
         lazy: async () => {
           const { ReconocimientosDashboardPage } = await import(
             '@/features/dashboard/pages/ReconocimientosDashboardPage'
           )
           return { Component: ReconocimientosDashboardPage }
+        },
+      },
+      {
+        path: 'dashboard/configuracion',
+        lazy: async () => {
+          const { SettingsPage } = await import('@/features/settings/pages/SettingsPage')
+          return { Component: SettingsPage }
         },
       },
       {
@@ -249,6 +281,13 @@ export const router = createBrowserRouter([
             lazy: async () => {
               const { AdminUsersPage } = await import('@/features/admin/pages/AdminUsersPage')
               return { Component: AdminUsersPage }
+            },
+          },
+          {
+            path: 'pagos',
+            lazy: async () => {
+              const { AdminPayoutsPage } = await import('@/features/admin/pages/AdminPayoutsPage')
+              return { Component: AdminPayoutsPage }
             },
           },
         ],
