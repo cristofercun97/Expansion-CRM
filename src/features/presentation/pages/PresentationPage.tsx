@@ -241,6 +241,7 @@ export function PresentationPage() {
         <PresentationEditorForm
           form={form}
           setForm={setForm}
+          ownerUid={uid}
           isBusy={isBusy}
           publishing={publishing}
           isPublished={isPublished}

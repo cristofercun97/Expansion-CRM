@@ -167,6 +167,7 @@ type PreviewHeadingProps = {
   description?: string
   centered?: boolean
   sectionKey?: PresentationLandingSectionKey
+  hideBadge?: boolean
 }
 
 export function PreviewHeading({
@@ -174,12 +175,13 @@ export function PreviewHeading({
   description,
   centered = true,
   sectionKey,
+  hideBadge = false,
 }: PreviewHeadingProps) {
   const sectionMeta = sectionKey ? PRESENTATION_EDITOR_SECTIONS[sectionKey] : null
 
   return (
     <div className={cn('mb-8', centered && 'text-center')}>
-      {sectionMeta ? (
+      {sectionMeta && !hideBadge ? (
         <div className={cn('mb-4', centered ? 'flex justify-center' : 'flex')}>
           <PreviewSectionBadgeFromMeta meta={sectionMeta} />
         </div>

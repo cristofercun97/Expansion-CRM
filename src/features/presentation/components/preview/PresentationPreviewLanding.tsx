@@ -37,7 +37,13 @@ type PresentationPreviewLandingProps = {
   }
 }
 
-function ProfileImage({ photoUrl }: { photoUrl: string }) {
+function ProfileImage({
+  photoUrl,
+  className,
+}: {
+  photoUrl: string
+  className?: string
+}) {
   const imageUrl = photoUrl.trim()
 
   if (imageUrl) {
@@ -45,14 +51,20 @@ function ProfileImage({ photoUrl }: { photoUrl: string }) {
       <img
         src={imageUrl}
         alt=""
-        className="mx-auto h-28 w-28 rounded-full border-4 border-[var(--preview-button-bg)] object-cover shadow-xl sm:h-36 sm:w-36"
+        className={cn(
+          'mx-auto h-28 w-28 rounded-full border-4 border-[var(--preview-button-bg)] object-cover shadow-xl sm:h-36 sm:w-36',
+          className,
+        )}
       />
     )
   }
 
   return (
     <div
-      className="mx-auto flex h-28 w-28 items-center justify-center rounded-full border-4 border-[var(--preview-button-bg)] bg-[var(--preview-surface-bg)] shadow-xl sm:h-36 sm:w-36"
+      className={cn(
+        'mx-auto flex h-28 w-28 items-center justify-center rounded-full border-4 border-[var(--preview-button-bg)] bg-[var(--preview-surface-bg)] shadow-xl sm:h-36 sm:w-36',
+        className,
+      )}
       aria-hidden="true"
     >
       <User className="h-12 w-12 text-[var(--preview-button-bg)] sm:h-16 sm:w-16" />
@@ -240,11 +252,20 @@ export function PresentationPreviewLanding({ form, publicContext }: Presentation
 
       {hasSectionContent(form.story.title, form.story.description) ? (
         <PreviewSection>
-          <PreviewHeading
-            sectionKey="story"
-            title={form.story.title || 'Mi historia'}
-            description={form.story.description}
-          />
+          <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
+            <div className="mb-4 flex justify-center">
+              <PreviewSectionBadgeFromMeta meta={PRESENTATION_EDITOR_SECTIONS.story} />
+            </div>
+            <div className="mb-6">
+              <ProfileImage photoUrl={form.visualIdentity.photoUrl} />
+            </div>
+            <PreviewHeading
+              sectionKey="story"
+              hideBadge
+              title={form.story.title || 'Mi historia'}
+              description={form.story.description}
+            />
+          </div>
         </PreviewSection>
       ) : null}
 

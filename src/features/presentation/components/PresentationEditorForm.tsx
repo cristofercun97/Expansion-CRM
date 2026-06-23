@@ -12,6 +12,7 @@ import {
   PresentationUrlInput,
 } from '@/features/presentation/components/PresentationFormFields'
 import { PRESENTATION_FIELD_LIMITS } from '@/features/presentation/constants/presentationFieldLimits'
+import { PresentationImageUrlField } from '@/features/presentation/components/PresentationImageUrlField'
 import { PresentationSectionCard } from '@/features/presentation/components/PresentationSectionCard'
 import { presentationFormPreviewFields } from '@/features/presentation/constants/presentationDefaults'
 import { PRESENTATION_EDITOR_SECTIONS } from '@/features/presentation/constants/presentationSectionGuides'
@@ -29,6 +30,7 @@ import { cn } from '@/lib/utils'
 type PresentationEditorFormProps = {
   form: PresentationFormState
   setForm: Dispatch<SetStateAction<PresentationFormState>>
+  ownerUid?: string
   isBusy: boolean
   publishing: boolean
   isPublished: boolean
@@ -135,6 +137,7 @@ function updateSectionField<
 export function PresentationEditorForm({
   form,
   setForm,
+  ownerUid,
   isBusy,
   publishing,
   isPublished,
@@ -245,23 +248,23 @@ export function PresentationEditorForm({
         guide={PRESENTATION_EDITOR_SECTIONS.visualIdentity.guide}
       >
         <div className="grid gap-5 sm:grid-cols-2">
-          <PresentationUrlInput
+          <PresentationImageUrlField
             label="Logo URL"
-            type="url"
             placeholder="https://ejemplo.com/logo.png"
             value={form.visualIdentity.logoUrl}
-            onChange={(event) =>
-              updateSectionField(setForm, 'visualIdentity', 'logoUrl', event.target.value)
-            }
+            ownerUid={ownerUid}
+            imageKind="logo"
+            disabled={isBusy}
+            onChange={(value) => updateSectionField(setForm, 'visualIdentity', 'logoUrl', value)}
           />
-          <PresentationUrlInput
+          <PresentationImageUrlField
             label="Foto personal URL"
-            type="url"
             placeholder="https://ejemplo.com/foto.jpg"
             value={form.visualIdentity.photoUrl}
-            onChange={(event) =>
-              updateSectionField(setForm, 'visualIdentity', 'photoUrl', event.target.value)
-            }
+            ownerUid={ownerUid}
+            imageKind="photo"
+            disabled={isBusy}
+            onChange={(value) => updateSectionField(setForm, 'visualIdentity', 'photoUrl', value)}
           />
           <div className="sm:col-span-2">
             <PresentationInput
