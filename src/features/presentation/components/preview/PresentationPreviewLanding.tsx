@@ -24,6 +24,7 @@ import { PresentationPreviewHeader } from '@/features/presentation/components/pr
 import {
   getTiktokEmbedUrl,
   getYoutubeEmbedUrl,
+  isImageUrl,
 } from '@/features/presentation/components/preview/videoEmbedUtils'
 import type { PresentationFormState } from '@/features/presentation/types/presentation.types'
 import { cn } from '@/lib/utils'
@@ -116,7 +117,11 @@ function ServiceCards({ form }: { form: PresentationFormState }) {
             </p>
           ) : null}
           <div className="mt-5">
-            <PreviewButton className="w-full" scrollToForm>
+            <PreviewButton
+              href={service.ctaUrl}
+              scrollToForm={!hasText(service.ctaUrl)}
+              className="w-full"
+            >
               {service.ctaText || 'Más información'}
             </PreviewButton>
           </div>
@@ -127,40 +132,113 @@ function ServiceCards({ form }: { form: PresentationFormState }) {
 }
 
 function ContentList({ form }: { form: PresentationFormState }) {
+  const items = form.contents.filter((item) => hasText(item.title) || hasText(item.url))
+
+  if (items.length === 0) {
+    return null
+  }
+
   return (
-    <ul className="space-y-4">
-      {form.contents.map((item, index) => (
-        <li
-          key={index}
-          className={cn(
-            'flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5',
-            previewSurfaceClasses(),
-          )}
-        >
-          <div>
-            <p className={cn('font-semibold', previewHeadingClasses())}>
-              {item.title || `Contenido ${index + 1}`}
-            </p>
-            <span className="mt-1 inline-block rounded-full border border-[var(--preview-surface-border)] bg-[var(--preview-surface-bg)] px-2.5 py-0.5 text-xs font-medium capitalize text-[var(--preview-button-bg)]">
-              {item.type}
-            </span>
-          </div>
-          {hasText(item.url) ? (
-            <a
-              href={item.url.trim()}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={cn(
-                'inline-flex items-center gap-1.5 text-sm font-medium text-[var(--preview-button-bg)] hover:underline',
-              )}
-            >
-              Ver enlace
-              <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-            </a>
-          ) : null}
-        </li>
-      ))}
-    </ul>
+    <div className="space-y-14 sm:space-y-20">
+      {items.map((item, index) => {
+        const url = item.url.trim()
+        const youtubeEmbed = url ? getYoutubeEmbedUrl(url) : null
+        const tiktokEmbed = !youtubeEmbed && url ? getTiktokEmbedUrl(url) : null
+        const showImage = Boolean(url && !youtubeEmbed && !tiktokEmbed && isImageUrl(url))
+        const showExternalLink = Boolean(url && !youtubeEmbed && !tiktokEmbed && !showImage)
+        const hasMedia = Boolean(youtubeEmbed || tiktokEmbed || showImage)
+        const isReversed = index % 2 === 1
+        const indexLabel = String(index + 1).padStart(2, '0')
+
+        return (
+          <article
+            key={`${item.title}-${index}`}
+            className={cn(
+              'grid items-center gap-8 sm:gap-10',
+              hasMedia ? 'lg:grid-cols-2 lg:gap-14' : 'max-w-2xl',
+              isReversed && hasMedia && 'lg:[&>*:first-child]:order-2',
+            )}
+          >
+            <div className={cn(!hasMedia && 'mx-auto w-full text-center')}>
+              <div className="flex items-center gap-3">
+                <span
+                  className="text-3xl font-light tracking-tight text-[var(--preview-button-bg)]/45 sm:text-4xl"
+                  aria-hidden="true"
+                >
+                  {indexLabel}
+                </span>
+                <span className="h-px flex-1 bg-[var(--preview-surface-border)]" aria-hidden="true" />
+              </div>
+
+              <p className="mt-4 text-xs font-semibold uppercase tracking-[0.22em] text-[var(--preview-button-bg)]">
+                {item.type}
+              </p>
+
+              <h3
+                className={cn(
+                  'mt-3 text-2xl font-semibold leading-snug tracking-tight sm:text-3xl',
+                  previewHeadingClasses(),
+                )}
+              >
+                {item.title || `Contenido ${index + 1}`}
+              </h3>
+
+              {showExternalLink ? (
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-[var(--preview-button-bg)] transition-opacity hover:opacity-80"
+                >
+                  Abrir contenido
+                  <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                </a>
+              ) : null}
+
+              {hasMedia && !showExternalLink ? (
+                <p className={cn('mt-4 max-w-md text-sm leading-relaxed sm:text-base', previewBodyClasses())}>
+                  Una pieza para conocer más de cerca mi trabajo y experiencia.
+                </p>
+              ) : null}
+            </div>
+
+            {hasMedia ? (
+              <div
+                className={cn(
+                  'relative',
+                  isReversed ? 'lg:justify-self-start' : 'lg:justify-self-end',
+                )}
+              >
+                <div
+                  className="pointer-events-none absolute -inset-4 -z-10 rounded-[2rem] bg-[var(--preview-button-bg)]/8 blur-2xl"
+                  aria-hidden="true"
+                />
+
+                {youtubeEmbed || tiktokEmbed ? (
+                  <div className="mx-auto aspect-[9/16] w-full max-w-[260px] overflow-hidden rounded-[1.75rem] border border-[var(--preview-surface-border)] bg-black shadow-[0_20px_50px_rgba(0,0,0,0.28)] sm:max-w-[280px]">
+                    <iframe
+                      src={youtubeEmbed ?? tiktokEmbed ?? undefined}
+                      title={item.title || `Contenido ${index + 1}`}
+                      className="h-full w-full"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
+                      allowFullScreen
+                    />
+                  </div>
+                ) : null}
+
+                {showImage ? (
+                  <img
+                    src={url}
+                    alt={item.title || `Contenido ${index + 1}`}
+                    className="mx-auto max-h-[460px] w-full rounded-[1.75rem] object-cover shadow-[0_20px_50px_rgba(0,0,0,0.22)]"
+                  />
+                ) : null}
+              </div>
+            ) : null}
+          </article>
+        )
+      })}
+    </div>
   )
 }
 
@@ -205,7 +283,10 @@ export function PresentationPreviewLanding({ form, publicContext }: Presentation
             {heroSubtitle}
           </p>
           <div className="mt-8">
-            <PreviewButton scrollToForm>
+            <PreviewButton
+              href={form.mainMessage.ctaUrl}
+              scrollToForm={!hasText(form.mainMessage.ctaUrl)}
+            >
               {form.mainMessage.ctaText || 'Quiero más información'}
             </PreviewButton>
           </div>
@@ -278,7 +359,8 @@ export function PresentationPreviewLanding({ form, publicContext }: Presentation
       ) : null}
 
       {hasText(form.socialProof.testimonialText) ||
-      hasText(form.socialProof.testimonialName) ? (
+      hasText(form.socialProof.testimonialName) ||
+      hasText(form.socialProof.proofUrl) ? (
         <PreviewSection>
           <PreviewHeading sectionKey="socialProof" title="Prueba social" />
           <SocialProofBlock form={form} />
@@ -310,10 +392,18 @@ export function PresentationPreviewLanding({ form, publicContext }: Presentation
       ) : null}
 
       {form.contents.some((item) => hasText(item.title) || hasText(item.url)) ? (
-        <PreviewSection>
-          <PreviewHeading sectionKey="contents" title="Contenido y autoridad" />
-          <ContentList form={form} />
-        </PreviewSection>
+        <section className="px-4 py-16 text-[var(--preview-body)] sm:px-6 sm:py-24">
+          <div className="mx-auto max-w-5xl">
+            <div className="mx-auto mb-12 max-w-2xl text-center sm:mb-16">
+              <PreviewHeading
+                sectionKey="contents"
+                title="Contenido y autoridad"
+                description="Piezas seleccionadas para que conozcas mi trabajo con más profundidad."
+              />
+            </div>
+            <ContentList form={form} />
+          </div>
+        </section>
       ) : null}
 
       {hasSectionContent(form.finalCta.title, form.finalCta.description) ? (
@@ -324,7 +414,10 @@ export function PresentationPreviewLanding({ form, publicContext }: Presentation
             description={form.finalCta.description}
           />
           <div className="text-center">
-            <PreviewButton scrollToForm>
+            <PreviewButton
+              href={form.finalCta.ctaUrl}
+              scrollToForm={!hasText(form.finalCta.ctaUrl)}
+            >
               {form.finalCta.ctaText || 'Comenzar ahora'}
             </PreviewButton>
           </div>
@@ -437,21 +530,63 @@ function PresentationPreviewForm({
 }
 
 function SocialProofBlock({ form }: { form: PresentationFormState }) {
+  const proofUrl = form.socialProof.proofUrl.trim()
+  const youtubeEmbed = proofUrl ? getYoutubeEmbedUrl(proofUrl) : null
+  const tiktokEmbed = !youtubeEmbed && proofUrl ? getTiktokEmbedUrl(proofUrl) : null
+  const hasVideoEmbed = Boolean(youtubeEmbed || tiktokEmbed)
+  const hasTestimonialCopy =
+    hasText(form.socialProof.testimonialText) || hasText(form.socialProof.testimonialName)
+
   return (
-    <blockquote className={cn('p-6 sm:p-8', previewSurfaceClasses())}>
-      <Quote className="h-8 w-8 text-[var(--preview-button-bg)]" aria-hidden="true" />
-      <p className={cn('mt-4 text-lg italic leading-relaxed sm:text-xl', previewBodyClasses())}>
-        "{form.socialProof.testimonialText || 'Tu testimonio aparecerá aquí.'}"
-      </p>
-      {hasText(form.socialProof.testimonialName) ? (
-        <footer className="mt-4 text-base font-semibold text-[var(--preview-button-bg)]">
-          — {form.socialProof.testimonialName}
-        </footer>
+    <div className="space-y-6">
+      {hasTestimonialCopy ? (
+        <blockquote className={cn('p-6 sm:p-8', previewSurfaceClasses())}>
+          <Quote className="h-8 w-8 text-[var(--preview-button-bg)]" aria-hidden="true" />
+          {hasText(form.socialProof.testimonialText) ? (
+            <p className={cn('mt-4 text-lg italic leading-relaxed sm:text-xl', previewBodyClasses())}>
+              "{form.socialProof.testimonialText}"
+            </p>
+          ) : null}
+          {hasText(form.socialProof.testimonialName) ? (
+            <footer className="mt-4 text-base font-semibold text-[var(--preview-button-bg)]">
+              — {form.socialProof.testimonialName}
+            </footer>
+          ) : null}
+        </blockquote>
       ) : null}
-      {hasText(form.socialProof.proofUrl) ? (
-        <div className="mt-6 text-center">
+
+      {youtubeEmbed ? (
+        <div className="mx-auto flex w-full max-w-sm flex-col items-center text-center">
+          <div className="aspect-[9/16] w-full max-w-[280px] overflow-hidden rounded-2xl border border-[var(--preview-surface-border)] bg-black shadow-lg">
+            <iframe
+              src={youtubeEmbed}
+              title="Video testimonio"
+              className="h-full w-full"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {tiktokEmbed ? (
+        <div className="mx-auto flex w-full max-w-sm flex-col items-center text-center">
+          <div className="aspect-[9/16] w-full max-w-[280px] overflow-hidden rounded-2xl border border-[var(--preview-surface-border)] bg-black shadow-lg">
+            <iframe
+              src={tiktokEmbed}
+              title="Video testimonio"
+              className="h-full w-full"
+              allow="fullscreen"
+              allowFullScreen
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {proofUrl && !hasVideoEmbed ? (
+        <div className="text-center">
           <a
-            href={form.socialProof.proofUrl.trim()}
+            href={proofUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--preview-button-bg)] hover:underline"
@@ -461,7 +596,7 @@ function SocialProofBlock({ form }: { form: PresentationFormState }) {
           </a>
         </div>
       ) : null}
-    </blockquote>
+    </div>
   )
 }
 

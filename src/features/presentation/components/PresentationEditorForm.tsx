@@ -1,5 +1,5 @@
-import { Copy, Eye, Globe, Loader2, Upload, XCircle } from 'lucide-react'
-import type { Dispatch, SetStateAction } from 'react'
+import { ChevronLeft, ChevronRight, Copy, Eye, Globe, Loader2, Save, Upload, XCircle } from 'lucide-react'
+import { useState, type Dispatch, type SetStateAction } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge, Button, Input, Textarea } from '@/components/ui'
 import {
@@ -14,7 +14,12 @@ import {
 import { PRESENTATION_FIELD_LIMITS } from '@/features/presentation/constants/presentationFieldLimits'
 import { PresentationImageUrlField } from '@/features/presentation/components/PresentationImageUrlField'
 import { PresentationSectionCard } from '@/features/presentation/components/PresentationSectionCard'
+import { PresentationWizardProgress } from '@/features/presentation/components/PresentationWizardProgress'
 import { presentationFormPreviewFields } from '@/features/presentation/constants/presentationDefaults'
+import {
+  PRESENTATION_EDITOR_STEP_COUNT,
+  PRESENTATION_EDITOR_STEPS,
+} from '@/features/presentation/constants/presentationEditorSteps'
 import { PRESENTATION_EDITOR_SECTIONS } from '@/features/presentation/constants/presentationSectionGuides'
 import {
   PRESENTATION_CONTENT_TYPES,
@@ -32,6 +37,7 @@ type PresentationEditorFormProps = {
   setForm: Dispatch<SetStateAction<PresentationFormState>>
   ownerUid?: string
   isBusy: boolean
+  saving?: boolean
   publishing: boolean
   isPublished: boolean
   slug: string
@@ -39,6 +45,7 @@ type PresentationEditorFormProps = {
   onPublish: () => void
   onUnpublish: () => void
   onCopyLink: () => void
+  onSave?: () => void
 }
 
 type ColorFieldProps = {
@@ -110,15 +117,6 @@ function TextColorSelect({ label, value, onChange, disabled }: TextColorSelectPr
   )
 }
 
-function SectionGroupTitle({ children }: { children: string }) {
-  return (
-    <div className="flex items-center gap-3 pt-2">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-hero-text/55">{children}</h2>
-      <div className="h-px flex-1 bg-white/10" aria-hidden="true" />
-    </div>
-  )
-}
-
 function updateSectionField<
   S extends keyof PresentationFormState,
   F extends keyof PresentationFormState[S],
@@ -139,6 +137,7 @@ export function PresentationEditorForm({
   setForm,
   ownerUid,
   isBusy,
+  saving = false,
   publishing,
   isPublished,
   slug,
@@ -146,7 +145,9 @@ export function PresentationEditorForm({
   onPublish,
   onUnpublish,
   onCopyLink,
+  onSave,
 }: PresentationEditorFormProps) {
+  const [currentStepIndex, setCurrentStepIndex] = useState(0)
   const interestPreviewOptions = form.formConfig.interestOptionsText
     .split('\n')
     .map((line) => line.trim())
@@ -154,9 +155,35 @@ export function PresentationEditorForm({
 
   const publicPath = slug ? getPublicPresentationPath(slug) : ''
   const publishDisabled = isBusy || publishing || !slug
+  const currentStepId = PRESENTATION_EDITOR_STEPS[currentStepIndex]?.id ?? 'status'
+  const isFirstStep = currentStepIndex === 0
+  const isLastStep = currentStepIndex === PRESENTATION_EDITOR_STEP_COUNT - 1
+
+  function goToPreviousStep() {
+    setCurrentStepIndex((current) => Math.max(0, current - 1))
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  function goToNextStep() {
+    setCurrentStepIndex((current) => Math.min(PRESENTATION_EDITOR_STEP_COUNT - 1, current + 1))
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  function handleStepSelect(index: number) {
+    setCurrentStepIndex(index)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   return (
     <div className="space-y-6">
+      <PresentationWizardProgress
+        steps={PRESENTATION_EDITOR_STEPS}
+        currentStepIndex={currentStepIndex}
+        onStepSelect={handleStepSelect}
+        disabled={isBusy}
+      />
+
+      {currentStepId === 'status' ? (
       <PresentationSectionCard
         title="Estado de tu página"
         description="Configura tu enlace público y publica tu presentación."
@@ -239,7 +266,9 @@ export function PresentationEditorForm({
           </div>
         </div>
       </PresentationSectionCard>
+      ) : null}
 
+      {currentStepId === 'visualIdentity' ? (
       <PresentationSectionCard
         title="Identidad visual"
         description="Define los elementos visuales que representarán tu marca personal."
@@ -336,12 +365,32 @@ export function PresentationEditorForm({
               disabled={isBusy}
             />
             <ColorField
-              label="Color del botón «Descubrir si es para mí»"
+              label="Color del botón del header"
               value={form.visualIdentity.headerButtonColor}
               onChange={(value) =>
                 updateSectionField(setForm, 'visualIdentity', 'headerButtonColor', value)
               }
               disabled={isBusy}
+            />
+          </div>
+
+          <div className="grid gap-5 sm:grid-cols-2">
+            <PresentationCtaInput
+              label="Texto del botón del header"
+              placeholder="Ej: Descubrir si es para mí"
+              value={form.visualIdentity.headerCtaText}
+              onChange={(event) =>
+                updateSectionField(setForm, 'visualIdentity', 'headerCtaText', event.target.value)
+              }
+            />
+            <PresentationUrlInput
+              label="Enlace del botón del header (opcional)"
+              type="url"
+              placeholder="https://... o déjalo vacío para ir al formulario"
+              value={form.visualIdentity.headerCtaUrl}
+              onChange={(event) =>
+                updateSectionField(setForm, 'visualIdentity', 'headerCtaUrl', event.target.value)
+              }
             />
           </div>
 
@@ -373,7 +422,9 @@ export function PresentationEditorForm({
           </div>
         </div>
       </PresentationSectionCard>
+      ) : null}
 
+      {currentStepId === 'mainMessage' ? (
       <PresentationSectionCard
         title="Mensaje principal"
         description="Comunica tu propuesta de valor de forma clara y directa."
@@ -412,11 +463,21 @@ export function PresentationEditorForm({
               updateSectionField(setForm, 'mainMessage', 'ctaText', event.target.value)
             }
           />
+          <PresentationUrlInput
+            label="Enlace del botón principal (opcional)"
+            type="url"
+            placeholder="https://... o déjalo vacío para ir al formulario"
+            value={form.mainMessage.ctaUrl}
+            onChange={(event) =>
+              updateSectionField(setForm, 'mainMessage', 'ctaUrl', event.target.value)
+            }
+          />
         </div>
       </PresentationSectionCard>
+      ) : null}
 
-      <SectionGroupTitle>Contenido de tu landing</SectionGroupTitle>
-
+      {currentStepId === 'problemPromise' ? (
+        <>
       <PresentationSectionCard
         title="Problema"
         description="Tienes talento, pero tu marca no lo comunica."
@@ -464,7 +525,11 @@ export function PresentationEditorForm({
           />
         </div>
       </PresentationSectionCard>
+        </>
+      ) : null}
 
+      {currentStepId === 'leadStory' ? (
+        <>
       <PresentationSectionCard
         title="Lead magnet"
         description="Guía, diagnóstico o clase gratuita."
@@ -495,9 +560,9 @@ export function PresentationEditorForm({
               }
             />
             <PresentationUrlInput
-              label="URL del recurso"
+              label="URL del recurso (opcional)"
               type="url"
-              placeholder="https://..."
+              placeholder="https://... o déjalo vacío para ir al formulario"
               value={form.leadMagnet.resourceUrl}
               onChange={(event) =>
                 updateSectionField(setForm, 'leadMagnet', 'resourceUrl', event.target.value)
@@ -533,7 +598,10 @@ export function PresentationEditorForm({
           />
         </div>
       </PresentationSectionCard>
+        </>
+      ) : null}
 
+      {currentStepId === 'method' ? (
       <PresentationSectionCard
         title="Método"
         description="Tu sistema en 3 pasos."
@@ -582,7 +650,10 @@ export function PresentationEditorForm({
           ))}
         </div>
       </PresentationSectionCard>
+      ) : null}
 
+      {currentStepId === 'socialVideos' ? (
+        <>
       <PresentationSectionCard
         title="Prueba social"
         description="Testimonios, casos, capturas o eventos."
@@ -611,14 +682,17 @@ export function PresentationEditorForm({
             }
           />
           <PresentationUrlInput
-            label="URL de prueba (captura, evento, etc.)"
+            label="URL de video o prueba (YouTube / TikTok)"
             type="url"
-            placeholder="https://..."
+            placeholder="https://youtube.com/shorts/... o https://tiktok.com/..."
             value={form.socialProof.proofUrl}
             onChange={(event) =>
               updateSectionField(setForm, 'socialProof', 'proofUrl', event.target.value)
             }
           />
+          <p className="text-xs text-text-soft">
+            Si pegas un enlace de YouTube o TikTok, el video se mostrará embebido en tu landing.
+          </p>
         </div>
       </PresentationSectionCard>
 
@@ -648,7 +722,11 @@ export function PresentationEditorForm({
           />
         </div>
       </PresentationSectionCard>
+        </>
+      ) : null}
 
+      {currentStepId === 'servicesContents' ? (
+        <>
       <PresentationSectionCard
         title="Servicios"
         description="Presenta hasta 3 servicios principales que ofreces."
@@ -696,6 +774,19 @@ export function PresentationEditorForm({
                     setForm((current) => {
                       const services = [...current.services] as PresentationFormState['services']
                       services[index] = { ...services[index], ctaText: event.target.value }
+                      return { ...current, services }
+                    })
+                  }
+                />
+                <PresentationUrlInput
+                  label="Enlace del botón (opcional)"
+                  type="url"
+                  placeholder="https://... o déjalo vacío para ir al formulario"
+                  value={service.ctaUrl}
+                  onChange={(event) =>
+                    setForm((current) => {
+                      const services = [...current.services] as PresentationFormState['services']
+                      services[index] = { ...services[index], ctaUrl: event.target.value }
                       return { ...current, services }
                     })
                   }
@@ -766,11 +857,11 @@ export function PresentationEditorForm({
                     ))}
                   </select>
                 </div>
-                <div className="sm:col-span-2">
+                <div className="sm:col-span-2 space-y-1">
                   <PresentationUrlInput
-                    label="URL"
+                    label="URL (video, imagen o enlace)"
                     type="url"
-                    placeholder="https://..."
+                    placeholder="https://youtube.com/... · https://tiktok.com/... · https://.../imagen.jpg"
                     value={content.url}
                     onChange={(event) =>
                       setForm((current) => {
@@ -780,13 +871,21 @@ export function PresentationEditorForm({
                       })
                     }
                   />
+                  <p className="text-xs text-text-soft">
+                    YouTube/TikTok se muestran embebidos. Las imágenes (.jpg, .png, etc.) se ven en la
+                    landing. Otros enlaces abren en una pestaña nueva.
+                  </p>
                 </div>
               </div>
             </div>
           ))}
         </div>
       </PresentationSectionCard>
+        </>
+      ) : null}
 
+      {currentStepId === 'ctaSocial' ? (
+        <>
       <PresentationSectionCard
         title="CTA final"
         description="Cierra tu presentación con una llamada a la acción clara."
@@ -813,6 +912,15 @@ export function PresentationEditorForm({
             value={form.finalCta.ctaText}
             onChange={(event) =>
               updateSectionField(setForm, 'finalCta', 'ctaText', event.target.value)
+            }
+          />
+          <PresentationUrlInput
+            label="Enlace del botón (opcional)"
+            type="url"
+            placeholder="https://... o déjalo vacío para ir al formulario"
+            value={form.finalCta.ctaUrl}
+            onChange={(event) =>
+              updateSectionField(setForm, 'finalCta', 'ctaUrl', event.target.value)
             }
           />
         </div>
@@ -882,7 +990,10 @@ export function PresentationEditorForm({
           />
         </div>
       </PresentationSectionCard>
+        </>
+      ) : null}
 
+      {currentStepId === 'form' ? (
       <PresentationSectionCard
         title="Formulario"
         description="Configura el formulario de contacto de tu página."
@@ -995,6 +1106,85 @@ export function PresentationEditorForm({
           </div>
         </div>
       </PresentationSectionCard>
+      ) : null}
+
+      <nav
+        className="sticky bottom-3 z-20 mt-2 rounded-2xl border border-gold/20 bg-gradient-to-br from-petrol-deep/95 via-[#0a2a30]/95 to-petrol-deep/95 p-3 shadow-[0_12px_40px_rgba(0,0,0,0.45)] backdrop-blur-xl sm:bottom-4 sm:p-4"
+        aria-label="Navegación del editor por pasos"
+      >
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <Button
+              type="button"
+              disabled={isBusy || isFirstStep}
+              onClick={goToPreviousStep}
+              className="h-11 gap-2 border border-[#6AC5BC]/40 bg-[#6AC5BC] text-petrol-deep hover:bg-[#7fd0c8] hover:text-petrol-deep disabled:border-[#6AC5BC]/20 disabled:bg-[#6AC5BC]/40 disabled:text-petrol-deep/50"
+            >
+              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+              Anterior
+            </Button>
+
+            <Link to={PRESENTATION_MODULE.previewRoute}>
+              <Button
+                type="button"
+                disabled={isBusy}
+                className="h-11 gap-2 border border-[#D9A441]/50 bg-[#D9A441] text-petrol-deep hover:bg-[#e0b055]"
+              >
+                <Eye className="h-4 w-4" aria-hidden="true" />
+                Vista previa
+              </Button>
+            </Link>
+          </div>
+
+          <div className="flex flex-col items-center gap-2">
+            <p className="text-sm font-medium text-hero-text">
+              {isLastStep ? 'Último paso' : `Paso ${currentStepIndex + 1} de ${PRESENTATION_EDITOR_STEP_COUNT}`}
+            </p>
+            <div className="flex items-center gap-1.5" aria-hidden="true">
+              {PRESENTATION_EDITOR_STEPS.map((step, index) => (
+                <span
+                  key={step.id}
+                  className={
+                    index === currentStepIndex
+                      ? 'h-2 w-6 rounded-full bg-gold'
+                      : index < currentStepIndex
+                        ? 'h-2 w-2 rounded-full bg-teal-accent'
+                        : 'h-2 w-2 rounded-full bg-white/25'
+                  }
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+            <Button
+              type="button"
+              disabled={isBusy || !onSave}
+              onClick={() => onSave?.()}
+              className="h-11 gap-2 bg-gold text-petrol-deep hover:bg-gold-light"
+            >
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <Save className="h-4 w-4" aria-hidden="true" />
+              )}
+              {saving ? 'Guardando...' : 'Guardar'}
+            </Button>
+
+            {!isLastStep ? (
+              <Button
+                type="button"
+                disabled={isBusy}
+                onClick={goToNextStep}
+                className="h-11 gap-2 bg-gold text-petrol-deep hover:bg-gold-light"
+              >
+                Siguiente
+                <ChevronRight className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      </nav>
     </div>
   )
 }

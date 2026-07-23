@@ -55,3 +55,34 @@ export function getTiktokEmbedUrl(url: string): string | null {
 
   return null
 }
+
+const IMAGE_EXTENSION_PATTERN = /\.(avif|bmp|gif|jpe?g|png|svg|webp)(\?.*)?$/i
+
+export function isImageUrl(url: string): boolean {
+  const trimmed = url.trim()
+  if (!trimmed) return false
+
+  if (IMAGE_EXTENSION_PATTERN.test(trimmed)) {
+    return true
+  }
+
+  try {
+    const parsed = new URL(trimmed)
+    const host = parsed.hostname.replace(/^www\./, '')
+
+    if (
+      host === 'images.unsplash.com' ||
+      host === 'i.imgur.com' ||
+      host === 'cdn.shopify.com' ||
+      host.endsWith('.googleusercontent.com') ||
+      host.endsWith('.firebasestorage.app') ||
+      host === 'firebasestorage.googleapis.com'
+    ) {
+      return true
+    }
+  } catch {
+    return false
+  }
+
+  return false
+}

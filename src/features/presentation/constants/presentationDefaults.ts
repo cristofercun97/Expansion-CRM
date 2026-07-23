@@ -14,9 +14,9 @@ const defaultMethodSteps: [PresentationMethodStep, PresentationMethodStep, Prese
 ]
 
 const defaultServices: [PresentationService, PresentationService, PresentationService] = [
-  { title: 'Diagnóstico', description: '', ctaText: 'Solicitar diagnóstico' },
-  { title: 'Mentoría', description: '', ctaText: 'Agendar mentoría' },
-  { title: 'Conferencia', description: '', ctaText: 'Reservar conferencia' },
+  { title: 'Diagnóstico', description: '', ctaText: 'Solicitar diagnóstico', ctaUrl: '' },
+  { title: 'Mentoría', description: '', ctaText: 'Agendar mentoría', ctaUrl: '' },
+  { title: 'Conferencia', description: '', ctaText: 'Reservar conferencia', ctaUrl: '' },
 ]
 
 const defaultContents: [
@@ -49,11 +49,14 @@ export const defaultPresentationFormState: PresentationFormState = {
     headerButtonTextColor: 'black',
     headingTextColor: 'white',
     bodyTextColor: 'gray',
+    headerCtaText: 'Descubrir si es para mí',
+    headerCtaUrl: '',
   },
   mainMessage: {
     valuePhrase: '',
     subtitle: '',
     ctaText: 'Quiero más información',
+    ctaUrl: '',
   },
   problem: { ...emptyTextSection },
   promise: { ...emptyTextSection },
@@ -83,6 +86,7 @@ export const defaultPresentationFormState: PresentationFormState = {
     title: '',
     description: '',
     ctaText: 'Comenzar ahora',
+    ctaUrl: '',
   },
   formConfig: {
     nameEnabled: true,

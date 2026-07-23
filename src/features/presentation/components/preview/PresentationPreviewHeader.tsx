@@ -1,6 +1,10 @@
 import { ArrowRight } from 'lucide-react'
 import { PresentationBrandMark } from '@/features/presentation/components/preview/PresentationBrandMark'
-import { scrollToFormulario } from '@/features/presentation/components/preview/previewUtils'
+import {
+  hasText,
+  isExternalUrl,
+  scrollToFormulario,
+} from '@/features/presentation/components/preview/previewUtils'
 import type { PresentationFormState } from '@/features/presentation/types/presentation.types'
 import { cn } from '@/lib/utils'
 
@@ -9,6 +13,11 @@ type PresentationPreviewHeaderProps = {
 }
 
 export function PresentationPreviewHeader({ form }: PresentationPreviewHeaderProps) {
+  const ctaText = form.visualIdentity.headerCtaText.trim() || 'Descubrir si es para mí'
+  const ctaUrl = form.visualIdentity.headerCtaUrl.trim()
+  const hasCustomLink = hasText(ctaUrl)
+  const external = hasCustomLink && isExternalUrl(ctaUrl)
+
   return (
     <header
       className="sticky top-0 z-40 border-b border-black/10 backdrop-blur-md"
@@ -20,8 +29,10 @@ export function PresentationPreviewHeader({ form }: PresentationPreviewHeaderPro
         </div>
 
         <a
-          href="#formulario"
-          onClick={scrollToFormulario}
+          href={hasCustomLink ? ctaUrl : '#formulario'}
+          onClick={hasCustomLink ? undefined : scrollToFormulario}
+          target={external ? '_blank' : undefined}
+          rel={external ? 'noopener noreferrer' : undefined}
           className={cn(
             'inline-flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-full px-3.5 py-2',
             'text-xs font-semibold shadow-sm transition-opacity hover:opacity-90 sm:gap-2 sm:px-5 sm:text-sm',
@@ -31,7 +42,7 @@ export function PresentationPreviewHeader({ form }: PresentationPreviewHeaderPro
             color: 'var(--preview-header-button-text)',
           }}
         >
-          Descubrir si es para mí
+          {ctaText}
           <ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" aria-hidden="true" />
         </a>
       </div>

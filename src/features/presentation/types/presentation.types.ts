@@ -16,18 +16,25 @@ export type PresentationVisualIdentity = {
   headerButtonTextColor: PresentationTextColor
   headingTextColor: PresentationTextColor
   bodyTextColor: PresentationTextColor
+  /** Texto del botón del header. */
+  headerCtaText: string
+  /** Enlace opcional del botón del header. Vacío = ir al formulario. */
+  headerCtaUrl: string
 }
 
 export type PresentationMainMessage = {
   valuePhrase: string
   subtitle: string
   ctaText: string
+  /** Enlace opcional del botón principal. Vacío = ir al formulario. */
+  ctaUrl: string
 }
 
 export type PresentationMainMessageFirestore = {
   valueTitle: string
   subtitle: string
   ctaText: string
+  ctaUrl: string
 }
 
 export type PresentationTextSection = {
@@ -67,6 +74,8 @@ export type PresentationService = {
   title: string
   description: string
   ctaText: string
+  /** Enlace opcional del botón. Vacío = ir al formulario. */
+  ctaUrl: string
 }
 
 export type PresentationContentType = 'video' | 'artículo' | 'entrevista' | 'post'
@@ -81,6 +90,8 @@ export type PresentationFinalCta = {
   title: string
   description: string
   ctaText: string
+  /** Enlace opcional del botón. Vacío = ir al formulario. */
+  ctaUrl: string
 }
 
 export type PresentationFormPreview = {
@@ -177,7 +188,7 @@ export const PRESENTATION_MODULE = {
   title: 'Presentación',
   subtitle: 'Expande tu marca personal',
   description:
-    'Crea una página pública para mostrar tu historia, tu oportunidad y conectar con personas interesadas.',
+    'Configura tu landing paso a paso: identidad, mensaje, historia, oferta y formulario para conectar con personas interesadas.',
   route: '/dashboard/presentacion',
   previewRoute: '/dashboard/presentacion/vista-previa',
 } as const

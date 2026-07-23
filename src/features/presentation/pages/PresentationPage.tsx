@@ -1,7 +1,5 @@
-import { ArrowLeft, Loader2, Save } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Button } from '@/components/ui'
 import { useToast } from '@/components/ui/toast/ToastProvider'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { PresentationEditorForm } from '@/features/presentation/components/PresentationEditorForm'
@@ -38,7 +36,6 @@ export function PresentationPage() {
 
   const uid = currentUser?.uid
   const isBusy = loading || saving || publishing || authLoading
-  const canSave = Boolean(uid) && !isBusy
 
   const loadPresentation = useCallback(async (ownerUid: string) => {
     setLoading(true)
@@ -207,14 +204,6 @@ export function PresentationPage() {
   return (
     <div className="px-4 py-6 sm:px-8 sm:py-8">
       <header className="mb-8 max-w-3xl">
-        <Link
-          to="/dashboard"
-          className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-hero-text/70 transition-colors hover:text-gold-light"
-        >
-          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-          Volver al panel
-        </Link>
-
         <h1 className="text-3xl font-semibold tracking-tight text-hero-text">
           {PRESENTATION_MODULE.title}
         </h1>
@@ -243,6 +232,7 @@ export function PresentationPage() {
           setForm={setForm}
           ownerUid={uid}
           isBusy={isBusy}
+          saving={saving}
           publishing={publishing}
           isPublished={isPublished}
           slug={slug}
@@ -250,23 +240,8 @@ export function PresentationPage() {
           onPublish={handlePublish}
           onUnpublish={handleUnpublish}
           onCopyLink={handleCopyLink}
+          onSave={() => void handleSave()}
         />
-
-        <div className="mt-6 flex justify-end">
-          <Button
-            type="button"
-            onClick={handleSave}
-            disabled={!canSave}
-            className="gap-2 bg-gold text-petrol-deep hover:bg-gold-light"
-          >
-            {saving ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-            ) : (
-              <Save className="h-4 w-4" aria-hidden="true" />
-            )}
-            {saving ? 'Guardando...' : 'Guardar cambios'}
-          </Button>
-        </div>
       </fieldset>
     </div>
   )

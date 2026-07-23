@@ -51,6 +51,7 @@ function mapService(source: DocumentData | undefined, fallback: PresentationServ
     title: str(source?.title, fallback.title),
     description: str(source?.description, fallback.description),
     ctaText: str(source?.ctaText, fallback.ctaText),
+    ctaUrl: str(source?.ctaUrl, fallback.ctaUrl),
   }
 }
 
@@ -119,6 +120,8 @@ function mapVisualIdentity(data: DocumentData): PresentationFormState['visualIde
     headerButtonTextColor: mapTextColor(source.headerButtonTextColor, defaults.headerButtonTextColor),
     headingTextColor: mapTextColor(source.headingTextColor, defaults.headingTextColor),
     bodyTextColor: mapTextColor(source.bodyTextColor, defaults.bodyTextColor),
+    headerCtaText: str(source.headerCtaText, defaults.headerCtaText),
+    headerCtaUrl: str(source.headerCtaUrl),
   }
 }
 
@@ -130,6 +133,7 @@ function mapMainMessage(data: DocumentData): PresentationFormState['mainMessage'
     valuePhrase: str(source.valueTitle ?? data.heroTitle, defaults.valuePhrase),
     subtitle: str(source.subtitle ?? data.heroSubtitle, defaults.subtitle),
     ctaText: str(source.ctaText ?? data.ctaText, defaults.ctaText),
+    ctaUrl: str(source.ctaUrl),
   }
 }
 
@@ -213,6 +217,7 @@ export function mapDocumentToPresentationRecord(
         title: str(data.finalCta?.title),
         description: str(data.finalCta?.description),
         ctaText: str(data.finalCta?.ctaText, defaults.finalCta.ctaText),
+        ctaUrl: str(data.finalCta?.ctaUrl),
       },
       formConfig: mapFormConfig(data),
       socialLinks: mapSocialLinks(data),
@@ -244,6 +249,7 @@ export function mapFormToFirestorePayload(
       valueTitle: form.mainMessage.valuePhrase,
       subtitle: form.mainMessage.subtitle,
       ctaText: form.mainMessage.ctaText,
+      ctaUrl: form.mainMessage.ctaUrl,
     },
     problem: form.problem,
     promise: form.promise,
