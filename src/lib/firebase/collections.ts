@@ -27,6 +27,7 @@ export const COLLECTIONS = {
   teamRecognitions: 'teamRecognitions',
   teamSalesGoals: 'teamSalesGoals',
   teamSalesReports: 'teamSalesReports',
+  teamSalesGoalHistory: 'teamSalesGoalHistory',
 } as const
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS]

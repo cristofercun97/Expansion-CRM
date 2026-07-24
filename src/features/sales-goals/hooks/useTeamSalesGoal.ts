@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { salesGoalService } from '@/features/sales-goals/services/sales-goal.service'
-import type { TeamSalesGoal, TeamSalesReport } from '@/features/sales-goals/types/sales-goal.types'
+import type {
+  TeamSalesGoal,
+  TeamSalesGoalHistory,
+  TeamSalesReport,
+} from '@/features/sales-goals/types/sales-goal.types'
 import {
   logSalesGoalLoadDebug,
   logSalesGoalLoadError,
@@ -20,6 +24,7 @@ type UseTeamSalesGoalOptions = {
   isLeader?: boolean
   enabled?: boolean
   periodTypeRequested?: 'weekly' | 'monthly'
+  leaderDisplayName?: string | null
   loadDebugContext?: SalesGoalLoadDebugContext
 }
 
@@ -27,9 +32,11 @@ type UseTeamSalesGoalResult = {
   goal: TeamSalesGoal | null
   reports: TeamSalesReport[]
   pendingReports: TeamSalesReport[]
+  history: TeamSalesGoalHistory[]
   validatedAmount: number
   progress: ReturnType<typeof buildSalesGoalProgress> | null
   loading: boolean
+  historyLoading: boolean
   error: string
   reload: () => Promise<void>
 }
@@ -40,102 +47,107 @@ export function useTeamSalesGoal({
   isLeader = false,
   enabled = true,
   periodTypeRequested = 'monthly',
+  leaderDisplayName = null,
   loadDebugContext,
 }: UseTeamSalesGoalOptions): UseTeamSalesGoalResult {
   const [goal, setGoal] = useState<TeamSalesGoal | null>(null)
   const [reports, setReports] = useState<TeamSalesReport[]>([])
+  const [history, setHistory] = useState<TeamSalesGoalHistory[]>([])
   const [loading, setLoading] = useState(Boolean(enabled && teamId?.trim()))
+  const [historyLoading, setHistoryLoading] = useState(false)
   const [error, setError] = useState('')
 
   const loadDebugContextRef = useRef(loadDebugContext)
   loadDebugContextRef.current = loadDebugContext
 
-  const performLoad = useCallback(async (isActive: () => boolean = () => true) => {
-    const normalizedTeamId = teamId?.trim()
+  const performLoad = useCallback(
+    async (isActive: () => boolean = () => true) => {
+      const normalizedTeamId = teamId?.trim()
 
-    if (!enabled || !normalizedTeamId) {
-      if (!isActive()) {
-        return
-      }
-
-      setGoal(null)
-      setReports([])
-      setLoading(false)
-      return
-    }
-
-    const { periodKey } = buildSalesPeriodKey(periodTypeRequested)
-    const expectedGoalId = buildSalesGoalDocId(normalizedTeamId, periodKey)
-    const expectedPath = `${COLLECTIONS.teamSalesGoals}/${expectedGoalId}`
-    const debugContext: SalesGoalLoadDebugContext = {
-      ...loadDebugContextRef.current,
-      effectiveTeamId: normalizedTeamId,
-      periodTypeRequested,
-      expectedGoalId,
-      expectedPath,
-    }
-
-    logSalesGoalLoadDebug(debugContext)
-
-    if (!isActive()) {
-      return
-    }
-
-    setLoading(true)
-    setError('')
-
-    let activeGoal: TeamSalesGoal | null = null
-
-    try {
-      activeGoal = await salesGoalService.getActiveGoalForTeam(normalizedTeamId)
-
-      if (!isActive()) {
-        return
-      }
-
-      setGoal(activeGoal)
-
-      if (isLeader) {
-        try {
-          const teamReports = await salesGoalService.getReportsForTeam(normalizedTeamId, {
-            goalId: activeGoal?.id,
-            leaderView: true,
-          })
-
-          if (!isActive()) {
-            return
-          }
-
-          setReports(teamReports)
-        } catch (reportsError) {
-          if (import.meta.env.DEV) {
-            console.warn('[SalesGoal] leader reports load failed', reportsError)
-          }
-
-          if (!isActive()) {
-            return
-          }
-
-          setReports([])
+      if (!enabled || !normalizedTeamId) {
+        if (!isActive()) {
+          return
         }
-      } else {
-        const memberUid = _viewerUid?.trim()
 
-        if (memberUid) {
-          try {
-            const memberReports = await salesGoalService.getReportsForTeam(normalizedTeamId, {
-              goalId: activeGoal?.id,
-              memberUid,
+        setGoal(null)
+        setReports([])
+        setHistory([])
+        setLoading(false)
+        setHistoryLoading(false)
+        return
+      }
+
+      const { periodKey } = buildSalesPeriodKey(periodTypeRequested)
+      const expectedGoalId = buildSalesGoalDocId(normalizedTeamId, periodKey)
+      const expectedPath = `${COLLECTIONS.teamSalesGoals}/${expectedGoalId}`
+      const debugContext: SalesGoalLoadDebugContext = {
+        ...loadDebugContextRef.current,
+        effectiveTeamId: normalizedTeamId,
+        periodTypeRequested,
+        expectedGoalId,
+        expectedPath,
+      }
+
+      logSalesGoalLoadDebug(debugContext)
+
+      if (!isActive()) {
+        return
+      }
+
+      setLoading(true)
+      setError('')
+
+      let activeGoal: TeamSalesGoal | null = null
+
+      try {
+        const ownerUid = _viewerUid?.trim()
+
+        if (isLeader && ownerUid) {
+          await salesGoalService
+            .ensureExpiredGoalsRollover(normalizedTeamId, {
+              ownerUid,
+              senderName: leaderDisplayName?.trim() || 'Líder del equipo',
             })
+            .catch((rolloverError) => {
+              if (import.meta.env.DEV) {
+                console.warn('[SalesGoal] period rollover failed', rolloverError)
+              }
+            })
+        }
+
+        activeGoal = await salesGoalService.getActiveGoalForTeam(normalizedTeamId)
+
+        if (!isActive()) {
+          return
+        }
+
+        setGoal(activeGoal)
+
+        if (isLeader) {
+          setHistoryLoading(true)
+
+          try {
+            const [teamReports, teamHistory] = await Promise.all([
+              salesGoalService.getReportsForTeam(normalizedTeamId, {
+                goalId: activeGoal?.id,
+                leaderView: true,
+              }),
+              salesGoalService.getHistoryForTeam(normalizedTeamId, 12, {
+                ownerUid,
+                persist: true,
+                senderName: leaderDisplayName?.trim() || 'Líder del equipo',
+              }),
+            ])
 
             if (!isActive()) {
               return
             }
 
-            setReports(memberReports)
+            setReports(teamReports)
+            setHistory(teamHistory)
           } catch (reportsError) {
             if (import.meta.env.DEV) {
-              console.warn('[SalesGoal] member reports load failed', reportsError)
+              console.warn('[SalesGoal] leader reports/history load failed', reportsError)
             }
 
             if (!isActive()) {
@@ -143,27 +155,72 @@ export function useTeamSalesGoal({
             }
 
             setReports([])
+            setHistory([])
+          } finally {
+            if (isActive()) {
+              setHistoryLoading(false)
+            }
           }
         } else {
-          setReports([])
+          const memberUid = _viewerUid?.trim()
+
+          if (memberUid) {
+            try {
+              const [memberReports, teamHistory] = await Promise.all([
+                salesGoalService.getReportsForTeam(normalizedTeamId, {
+                  goalId: activeGoal?.id,
+                  memberUid,
+                }),
+                salesGoalService
+                  .getHistoryForTeam(normalizedTeamId, 12, {
+                    ownerUid: null,
+                    persist: false,
+                  })
+                  .catch(() => []),
+              ])
+
+              if (!isActive()) {
+                return
+              }
+
+              setReports(memberReports)
+              setHistory(teamHistory)
+            } catch (reportsError) {
+              if (import.meta.env.DEV) {
+                console.warn('[SalesGoal] member reports load failed', reportsError)
+              }
+
+              if (!isActive()) {
+                return
+              }
+
+              setReports([])
+              setHistory([])
+            }
+          } else {
+            setReports([])
+            setHistory([])
+          }
+        }
+      } catch (goalError) {
+        logSalesGoalLoadError(goalError, debugContext)
+
+        if (!isActive()) {
+          return
+        }
+
+        setGoal(null)
+        setReports([])
+        setHistory([])
+        setError('No se pudo cargar el objetivo de ventas.')
+      } finally {
+        if (isActive()) {
+          setLoading(false)
         }
       }
-    } catch (goalError) {
-      logSalesGoalLoadError(goalError, debugContext)
-
-      if (!isActive()) {
-        return
-      }
-
-      setGoal(null)
-      setReports([])
-      setError('No se pudo cargar el objetivo de ventas.')
-    } finally {
-      if (isActive()) {
-        setLoading(false)
-      }
-    }
-  }, [enabled, isLeader, periodTypeRequested, teamId, _viewerUid])
+    },
+    [enabled, isLeader, leaderDisplayName, periodTypeRequested, teamId, _viewerUid],
+  )
 
   const performLoadRef = useRef(performLoad)
   performLoadRef.current = performLoad
@@ -176,7 +233,7 @@ export function useTeamSalesGoal({
     return () => {
       active = false
     }
-  }, [enabled, isLeader, periodTypeRequested, teamId, _viewerUid])
+  }, [enabled, isLeader, leaderDisplayName, periodTypeRequested, teamId, _viewerUid])
 
   const reload = useCallback(async () => {
     await performLoadRef.current(() => true)
@@ -208,9 +265,11 @@ export function useTeamSalesGoal({
     goal,
     reports,
     pendingReports,
+    history,
     validatedAmount,
     progress,
     loading,
+    historyLoading,
     error,
     reload,
   }

@@ -23,6 +23,18 @@ function formatRequestStatus(status: GroupActivationRequest['status']): string {
   return 'Rechazada'
 }
 
+function formatPaymentMethod(method: GroupActivationRequest['paymentMethod']): string {
+  if (method === 'paypal') {
+    return 'PayPal'
+  }
+
+  if (method === 'usdt_trc20') {
+    return 'USDT — TRC20'
+  }
+
+  return 'No indicado'
+}
+
 export function AdminActivationRequestsPanel() {
   const { currentUser } = useAuth()
   const { showToast } = useToast()
@@ -140,6 +152,34 @@ export function AdminActivationRequestsPanel() {
                       <p className="text-hero-text/70">
                         Importe: {request.amount} {request.currency}
                       </p>
+                      <p className="text-hero-text/70">
+                        Método: {formatPaymentMethod(request.paymentMethod)}
+                      </p>
+                      {request.paymentReference ? (
+                        <p className="break-all text-hero-text/70">
+                          {request.paymentMethod === 'usdt_trc20' ? 'TXID' : 'Referencia'}:{' '}
+                          {request.paymentReference}
+                        </p>
+                      ) : null}
+                      {request.paymentMethod === 'usdt_trc20' ? (
+                        <p className="text-hero-text/70">
+                          Red: {request.cryptoNetwork === 'TRON_TRC20' ? 'TRON — TRC20' : request.cryptoNetwork || '—'}
+                          {request.cryptoCurrency ? ` · ${request.cryptoCurrency}` : ''}
+                        </p>
+                      ) : null}
+                      {request.proofUrl ? (
+                        <p className="text-hero-text/70">
+                          Comprobante:{' '}
+                          <a
+                            href={request.proofUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium text-teal-accent underline-offset-2 hover:underline"
+                          >
+                            {request.proofFileName || 'Ver archivo'}
+                          </a>
+                        </p>
+                      ) : null}
                       <p className="text-hero-text/70">
                         Solicitada: {formatContactDateTime(request.requestedAt)}
                       </p>

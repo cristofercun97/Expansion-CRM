@@ -1,7 +1,7 @@
 import { ExternalLink, Quote, User } from 'lucide-react'
 import {
   defaultInterestOptionsText,
-  presentationFormPreviewFields,
+  getPresentationFormPreviewField,
 } from '@/features/presentation/constants/presentationDefaults'
 import { PRESENTATION_EDITOR_SECTIONS } from '@/features/presentation/constants/presentationSectionGuides'
 import {
@@ -27,6 +27,7 @@ import {
   isImageUrl,
 } from '@/features/presentation/components/preview/videoEmbedUtils'
 import type { PresentationFormState } from '@/features/presentation/types/presentation.types'
+import { COUNTRY_OPTIONS } from '@/features/settings/constants/countries'
 import { cn } from '@/lib/utils'
 
 type PresentationPreviewLandingProps = {
@@ -205,12 +206,12 @@ function ContentList({ form }: { form: PresentationFormState }) {
             {hasMedia ? (
               <div
                 className={cn(
-                  'relative',
+                  'relative overflow-hidden',
                   isReversed ? 'lg:justify-self-start' : 'lg:justify-self-end',
                 )}
               >
                 <div
-                  className="pointer-events-none absolute -inset-4 -z-10 rounded-[2rem] bg-[var(--preview-button-bg)]/8 blur-2xl"
+                  className="pointer-events-none absolute inset-0 -z-10 rounded-[2rem] bg-[var(--preview-button-bg)]/8 blur-2xl sm:-inset-4"
                   aria-hidden="true"
                 />
 
@@ -256,19 +257,19 @@ export function PresentationPreviewLanding({ form, publicContext }: Presentation
     form.mainMessage.subtitle.trim() || 'Completa tu presentación para personalizar este mensaje.'
 
   return (
-    <div style={previewThemeStyle(theme)} className="min-h-screen">
+    <div style={previewThemeStyle(theme)} className="min-h-screen overflow-x-hidden">
       <PresentationPreviewHeader form={form} />
 
       {/* Hero */}
-      <section className="relative overflow-hidden px-4 py-16 sm:px-6 sm:py-24">
+      <section className="relative overflow-hidden px-4 py-12 sm:px-6 sm:py-24">
         <div className="relative mx-auto max-w-3xl text-center">
-          <div className="mb-6 flex justify-center">
+          <div className="mb-5 flex justify-center sm:mb-6">
             <PreviewSectionBadgeFromMeta meta={PRESENTATION_EDITOR_SECTIONS.mainMessage} />
           </div>
           <ProfileImage photoUrl={form.visualIdentity.photoUrl} />
           <h1
             className={cn(
-              'mt-8 text-3xl font-bold leading-tight tracking-tight sm:text-4xl md:text-5xl',
+              'mt-6 text-[1.75rem] font-bold leading-tight tracking-tight sm:mt-8 sm:text-4xl md:text-5xl',
               previewHeadingClasses(),
             )}
           >
@@ -276,16 +277,17 @@ export function PresentationPreviewLanding({ form, publicContext }: Presentation
           </h1>
           <p
             className={cn(
-              'mx-auto mt-5 max-w-2xl text-lg leading-relaxed sm:text-xl',
+              'mx-auto mt-4 max-w-2xl text-base leading-relaxed sm:mt-5 sm:text-xl',
               previewBodyClasses(),
             )}
           >
             {heroSubtitle}
           </p>
-          <div className="mt-8">
+          <div className="mt-7 flex justify-center sm:mt-8">
             <PreviewButton
               href={form.mainMessage.ctaUrl}
               scrollToForm={!hasText(form.mainMessage.ctaUrl)}
+              className="w-full max-w-sm sm:w-auto"
             >
               {form.mainMessage.ctaText || 'Quiero más información'}
             </PreviewButton>
@@ -320,10 +322,11 @@ export function PresentationPreviewLanding({ form, publicContext }: Presentation
             title={form.leadMagnet.title || 'Recurso gratuito'}
             description={form.leadMagnet.description}
           />
-          <div className="text-center">
+          <div className="flex justify-center text-center">
             <PreviewButton
               href={form.leadMagnet.resourceUrl}
               scrollToForm={!hasText(form.leadMagnet.resourceUrl)}
+              className="w-full max-w-sm sm:w-auto"
             >
               {form.leadMagnet.ctaText || 'Descargar guía'}
             </PreviewButton>
@@ -413,10 +416,11 @@ export function PresentationPreviewLanding({ form, publicContext }: Presentation
             title={form.finalCta.title || '¿Listo para dar el siguiente paso?'}
             description={form.finalCta.description}
           />
-          <div className="text-center">
+          <div className="flex justify-center text-center">
             <PreviewButton
               href={form.finalCta.ctaUrl}
               scrollToForm={!hasText(form.finalCta.ctaUrl)}
+              className="w-full max-w-sm sm:w-auto"
             >
               {form.finalCta.ctaText || 'Comenzar ahora'}
             </PreviewButton>
@@ -454,17 +458,22 @@ function PresentationPreviewForm({
   form: PresentationFormState
   interestOptions: string[]
 }) {
+  const nameField = getPresentationFormPreviewField('name')
+  const whatsappField = getPresentationFormPreviewField('whatsapp')
+  const countryField = getPresentationFormPreviewField('country')
+  const cityField = getPresentationFormPreviewField('city')
+  const interestField = getPresentationFormPreviewField('interest')
+  const messageField = getPresentationFormPreviewField('message')
+
   return (
     <form className="space-y-5 rounded-2xl border border-petrol-dark/10 bg-white p-6 text-[#4A4A46] shadow-xl sm:p-8">
       {form.formConfig.nameEnabled ? (
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-[#071B25]">
-            {presentationFormPreviewFields[0].label}
-          </label>
+          <label className="text-sm font-medium text-[#071B25]">{nameField.label}</label>
           <input
             type="text"
             disabled
-            placeholder={presentationFormPreviewFields[0].placeholder}
+            placeholder={nameField.placeholder}
             className="h-11 rounded-lg border border-petrol-dark/15 bg-bg-warm/50 px-3 text-sm text-[#4A4A46]"
           />
         </div>
@@ -472,23 +481,52 @@ function PresentationPreviewForm({
 
       {form.formConfig.whatsappEnabled ? (
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-[#071B25]">
-            {presentationFormPreviewFields[1].label}
-          </label>
+          <label className="text-sm font-medium text-[#071B25]">{whatsappField.label}</label>
           <input
             type="tel"
             disabled
-            placeholder={presentationFormPreviewFields[1].placeholder}
+            placeholder={whatsappField.placeholder}
             className="h-11 rounded-lg border border-petrol-dark/15 bg-bg-warm/50 px-3 text-sm text-[#4A4A46]"
           />
         </div>
       ) : null}
 
+      {form.formConfig.countryEnabled || form.formConfig.cityEnabled ? (
+        <div className="grid gap-5 sm:grid-cols-2">
+          {form.formConfig.countryEnabled ? (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-[#071B25]">{countryField.label}</label>
+              <select
+                disabled
+                className="h-11 rounded-lg border border-petrol-dark/15 bg-bg-warm/50 px-3 text-sm text-[#4A4A46]"
+              >
+                <option>{countryField.placeholder}</option>
+                {COUNTRY_OPTIONS.slice(0, 3).map((country) => (
+                  <option key={country.code}>
+                    {`${country.flag} ${country.name}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+
+          {form.formConfig.cityEnabled ? (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-[#071B25]">{cityField.label}</label>
+              <select
+                disabled
+                className="h-11 rounded-lg border border-petrol-dark/15 bg-bg-warm/50 px-3 text-sm text-[#4A4A46]"
+              >
+                <option>{cityField.placeholder}</option>
+              </select>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       {form.formConfig.interestEnabled ? (
         <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-[#071B25]">
-            {presentationFormPreviewFields[2].label}
-          </label>
+          <label className="text-sm font-medium text-[#071B25]">{interestField.label}</label>
           <select
             disabled
             className="h-11 rounded-lg border border-petrol-dark/15 bg-bg-warm/50 px-3 text-sm text-[#4A4A46]"
@@ -502,13 +540,11 @@ function PresentationPreviewForm({
 
       {form.formConfig.messageEnabled ? (
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-[#071B25]">
-            {presentationFormPreviewFields[3].label}
-          </label>
+          <label className="text-sm font-medium text-[#071B25]">{messageField.label}</label>
           <textarea
             disabled
             rows={3}
-            placeholder={presentationFormPreviewFields[3].placeholder}
+            placeholder={messageField.placeholder}
             className="resize-none rounded-lg border border-petrol-dark/15 bg-bg-warm/50 px-3 py-2.5 text-sm text-[#4A4A46]"
           />
         </div>

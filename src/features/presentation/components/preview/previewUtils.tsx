@@ -153,7 +153,8 @@ export function PreviewSection({ children, className, id }: PreviewSectionProps)
       id={id}
       className={cn(
         'px-4 py-14 text-[var(--preview-body)] sm:px-6 sm:py-20',
-        id === 'formulario' && 'scroll-mt-[4.25rem]',
+        id === 'formulario' &&
+          'scroll-mt-[calc(4.25rem+env(safe-area-inset-top,0px))] sm:scroll-mt-[4.25rem]',
         className,
       )}
     >

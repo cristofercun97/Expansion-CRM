@@ -6,6 +6,9 @@ export type CreatePresentationProspectInput = {
   landingSlug: string
   name?: string
   whatsapp?: string
+  countryCode?: string
+  countryName?: string
+  city?: string
   interest?: string
   message?: string
   whatsappGroupUrl?: string
@@ -14,6 +17,8 @@ export type CreatePresentationProspectInput = {
 export type PresentationProspectFormValues = {
   name: string
   whatsapp: string
+  countryCode: string
+  city: string
   interest: string
   message: string
 }

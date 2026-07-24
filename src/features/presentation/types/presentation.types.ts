@@ -97,6 +97,8 @@ export type PresentationFinalCta = {
 export type PresentationFormPreview = {
   nameEnabled: boolean
   whatsappEnabled: boolean
+  countryEnabled: boolean
+  cityEnabled: boolean
   interestEnabled: boolean
   messageEnabled: boolean
 }

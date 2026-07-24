@@ -1,6 +1,8 @@
 import {
+  collection,
   doc,
   getDoc,
+  getDocs,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -147,6 +149,44 @@ async function getUserById(uid: string): Promise<AppUser | null> {
   return mapAppUser(snapshot.id, snapshot.data())
 }
 
+async function listAllUsers(): Promise<AppUser[]> {
+  const snapshot = await getDocs(collection(getFirebaseDb(), COLLECTIONS.users))
+
+  return snapshot.docs
+    .map((userDoc) => mapAppUser(userDoc.id, userDoc.data()))
+    .sort((left, right) => {
+      const leftTime = left.createdAt?.toMillis?.() ?? 0
+      const rightTime = right.createdAt?.toMillis?.() ?? 0
+
+      if (rightTime !== leftTime) {
+        return rightTime - leftTime
+      }
+
+      return left.email.localeCompare(right.email, 'es')
+    })
+}
+
+async function updateUserRole(uid: string, role: 'user' | 'member'): Promise<void> {
+  const current = await getUserById(uid)
+
+  if (!current) {
+    throw new Error('No encontramos ese usuario.')
+  }
+
+  if (current.role === 'admin') {
+    throw new Error('No se puede cambiar el rol de un administrador desde aquí.')
+  }
+
+  if (current.role === role) {
+    return
+  }
+
+  await updateDoc(doc(getFirebaseDb(), COLLECTIONS.users, uid), {
+    role,
+    updatedAt: serverTimestamp(),
+  })
+}
+
 async function getUserProfile(uid: string): Promise<AppUser | null> {
   return getUserById(uid)
 }
@@ -177,7 +217,9 @@ async function updateUserProfile(uid: string, data: UpdateAppUserInput): Promise
 export const usersService = {
   getUserById,
   getUserProfile,
+  listAllUsers,
   createUserProfile,
   updateUserProfile,
+  updateUserRole,
   syncOwnedTeamId,
 }

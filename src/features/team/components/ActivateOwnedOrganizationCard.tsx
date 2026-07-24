@@ -1,9 +1,9 @@
-import { Loader2, Sparkles, UserPlus } from 'lucide-react'
-import { Button } from '@/components/ui'
+import { Sparkles, UserPlus } from 'lucide-react'
 import { useToast } from '@/components/ui/toast/ToastProvider'
+import { ActivationRequestForm } from '@/features/group-activation/components/ActivationRequestForm'
 import { useGroupActivation } from '@/features/group-activation/hooks/useGroupActivation'
+import type { RequestGroupActivationInput } from '@/features/group-activation/types/group-activation.types'
 import { ReferralProgramSection } from '@/features/referrals/components/ReferralProgramSection'
-import { formatExpansionAnnualPriceLabel } from '@/features/referrals/constants/referralProgram.constants'
 import { MY_GROUP_COPY } from '@/features/team/utils/myGroupCopy'
 import { cn } from '@/lib/utils'
 
@@ -15,14 +15,15 @@ export function ActivateOwnedOrganizationCard({ className }: ActivateOwnedOrgani
   const { showToast } = useToast()
   const { activationStatus, requestActivation, submitting } = useGroupActivation()
 
-  async function handleRequestActivation() {
+  async function handleRequestActivation(input: RequestGroupActivationInput) {
     try {
-      await requestActivation()
+      await requestActivation(input)
       showToast('Solicitud enviada. El equipo revisará tu activación.', 'success')
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'No pudimos enviar tu solicitud. Inténtalo de nuevo.'
       showToast(message, 'info')
+      throw error
     }
   }
 
@@ -68,26 +69,15 @@ export function ActivateOwnedOrganizationCard({ className }: ActivateOwnedOrgani
             <p className="mt-2 text-sm leading-relaxed text-hero-text/75">
               {MY_GROUP_COPY.activateDescription}
             </p>
-            <p className="mt-3 text-sm font-semibold text-gold-light">
-              {formatExpansionAnnualPriceLabel()}
-            </p>
-            <Button
-              type="button"
-              className="mt-4 bg-gold text-petrol-deep hover:bg-gold-light"
-              disabled={submitting}
-              onClick={() => void handleRequestActivation()}
-            >
-              {submitting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
-                  Enviando solicitud...
-                </>
-              ) : (
-                MY_GROUP_COPY.activateCta
-              )}
-            </Button>
           </div>
         </div>
+
+        <ActivationRequestForm
+          className="mt-5"
+          submitting={submitting}
+          submitLabel={MY_GROUP_COPY.activateCta}
+          onSubmit={handleRequestActivation}
+        />
       </section>
 
       <ReferralProgramSection className="mt-5" />

@@ -67,8 +67,9 @@ export function TeamActionMapSection({
   return (
     <>
       <section
+        id="plan-mapa"
         className={cn(
-          'rounded-2xl border border-white/15 bg-white/8 p-5 backdrop-blur-xl sm:p-6',
+          'scroll-mt-28 rounded-2xl border border-white/15 bg-white/8 p-5 backdrop-blur-xl sm:p-6',
           className,
         )}
         aria-label={sectionLabel ?? 'Mapa del grupo'}
@@ -82,7 +83,7 @@ export function TeamActionMapSection({
               <h2 className="text-lg font-semibold text-hero-text">Mapa de ruta</h2>
               <p className="mt-1 text-sm text-hero-text/70">
                 {sectionLabel ??
-                  'Estructura estratégica del grupo. Un mapa activo por equipo.'}
+                  'La brújula del grupo: hacia dónde vamos y en qué áreas hay que actuar.'}
               </p>
             </div>
           </div>
@@ -120,8 +121,8 @@ export function TeamActionMapSection({
         ) : !map ? (
           <div className="mt-5 rounded-xl border border-dashed border-white/15 bg-white/5 px-4 py-5 text-sm text-hero-text/70">
             {canEdit
-              ? 'Aún no has creado el mapa de ruta de tu grupo. Empieza definiendo el objetivo principal, el periodo y las áreas clave.'
-              : 'Tu líder aún no ha publicado el mapa de ruta del grupo.'}
+              ? 'Aún no has creado el mapa de ruta. Define el objetivo principal, el periodo y las áreas clave para orientar al equipo.'
+              : 'Tu líder aún no ha publicado el mapa de ruta. Cuando lo haga, verás aquí el rumbo del grupo.'}
           </div>
         ) : (
           <div className="mt-5 space-y-5">

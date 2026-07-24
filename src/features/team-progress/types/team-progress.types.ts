@@ -48,6 +48,9 @@ export type TeamProgressSummary = {
   membersInGoodProgress: number
   needsFollowUp: number
   generalCompliancePercent: number
+  totalMaterials: number
+  membersNotReviewedModules: number
+  averageTeamScore: number | null
   members: TeamMemberProgressRow[]
 }
 
@@ -55,6 +58,7 @@ export type TeamMemberModuleProgressItem = {
   materialId: string
   title: string
   reviewed: boolean
+  openCount: number
   lastOpenedAt: Timestamp | null
 }
 

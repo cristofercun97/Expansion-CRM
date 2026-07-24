@@ -202,13 +202,15 @@ export function PresentationPage() {
   }
 
   return (
-    <div className="px-4 py-6 sm:px-8 sm:py-8">
-      <header className="mb-8 max-w-3xl">
-        <h1 className="text-3xl font-semibold tracking-tight text-hero-text">
+    <div className="mx-auto w-full max-w-3xl px-4 py-3 pb-36 sm:px-8 sm:py-8 sm:pb-32">
+      <header className="mb-3 sm:mb-8">
+        <h1 className="text-2xl font-semibold tracking-tight text-hero-text sm:text-3xl">
           {PRESENTATION_MODULE.title}
         </h1>
-        <p className="mt-2 text-base text-teal-accent">{PRESENTATION_MODULE.subtitle}</p>
-        <p className="mt-3 text-sm leading-relaxed text-hero-text/70">
+        <p className="mt-0.5 text-sm text-teal-accent sm:mt-2 sm:text-base">
+          {PRESENTATION_MODULE.subtitle}
+        </p>
+        <p className="mt-2 hidden text-sm leading-relaxed text-hero-text/70 sm:block">
           {PRESENTATION_MODULE.description}
         </p>
       </header>
@@ -226,7 +228,7 @@ export function PresentationPage() {
         </p>
       ) : null}
 
-      <fieldset disabled={isBusy} className="disabled:opacity-90">
+      <div className={isBusy ? 'pointer-events-none opacity-90' : undefined}>
         <PresentationEditorForm
           form={form}
           setForm={setForm}
@@ -242,7 +244,7 @@ export function PresentationPage() {
           onCopyLink={handleCopyLink}
           onSave={() => void handleSave()}
         />
-      </fieldset>
+      </div>
     </div>
   )
 }

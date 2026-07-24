@@ -50,6 +50,10 @@ function mapRelatedContext(value: unknown): TeamReminderRelatedContext | undefin
     typeof context.goalId === 'string' && context.goalId.trim().length > 0
       ? context.goalId.trim()
       : undefined
+  const historyId =
+    typeof context.historyId === 'string' && context.historyId.trim().length > 0
+      ? context.historyId.trim()
+      : undefined
   const amount = typeof context.amount === 'number' ? context.amount : undefined
   const currency =
     typeof context.currency === 'string' && context.currency.trim().length > 0
@@ -58,6 +62,12 @@ function mapRelatedContext(value: unknown): TeamReminderRelatedContext | undefin
   const memberUid =
     typeof context.memberUid === 'string' && context.memberUid.trim().length > 0
       ? context.memberUid.trim()
+      : undefined
+  const outcome =
+    context.outcome === 'achieved' || context.outcome === 'missed' ? context.outcome : undefined
+  const periodLabel =
+    typeof context.periodLabel === 'string' && context.periodLabel.trim().length > 0
+      ? context.periodLabel.trim()
       : undefined
   const ctaPath =
     typeof context.ctaPath === 'string' && context.ctaPath.trim().length > 0
@@ -69,9 +79,12 @@ function mapRelatedContext(value: unknown): TeamReminderRelatedContext | undefin
     ...(priority ? { priority } : {}),
     ...(salesReportId ? { salesReportId } : {}),
     ...(goalId ? { goalId } : {}),
+    ...(historyId ? { historyId } : {}),
     ...(amount !== undefined ? { amount } : {}),
     ...(currency ? { currency } : {}),
     ...(memberUid ? { memberUid } : {}),
+    ...(outcome ? { outcome } : {}),
+    ...(periodLabel ? { periodLabel } : {}),
     ...(ctaPath ? { ctaPath } : {}),
   }
 }
@@ -82,7 +95,8 @@ function mapReminderDocument(id: string, data: DocumentData): TeamReminder {
     data.type === 'task' ||
     data.type === 'academy' ||
     data.type === 'recognition' ||
-    data.type === 'sales_report'
+    data.type === 'sales_report' ||
+    data.type === 'sales_goal_result'
       ? data.type
       : 'follow_up'
 

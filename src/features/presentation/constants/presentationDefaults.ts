@@ -91,6 +91,8 @@ export const defaultPresentationFormState: PresentationFormState = {
   formConfig: {
     nameEnabled: true,
     whatsappEnabled: true,
+    countryEnabled: true,
+    cityEnabled: true,
     interestEnabled: true,
     messageEnabled: true,
     formTitle: '¿Te interesa dar el siguiente paso?',
@@ -113,6 +115,18 @@ export const defaultPresentationFormState: PresentationFormState = {
 export const presentationFormPreviewFields = [
   { label: 'Nombre', placeholder: 'Tu nombre completo', key: 'name' as const },
   { label: 'WhatsApp', placeholder: '+51 999 999 999', key: 'whatsapp' as const },
+  { label: 'País', placeholder: 'Selecciona un país', key: 'country' as const },
+  { label: 'Ciudad', placeholder: 'Selecciona una ciudad', key: 'city' as const },
   { label: 'Interés', placeholder: 'Selecciona una opción', key: 'interest' as const },
   { label: 'Mensaje', placeholder: 'Cuéntanos un poco sobre ti...', key: 'message' as const },
 ]
+
+export function getPresentationFormPreviewField(
+  key: (typeof presentationFormPreviewFields)[number]['key'],
+) {
+  const field = presentationFormPreviewFields.find((item) => item.key === key)
+  if (!field) {
+    throw new Error(`Campo de formulario no encontrado: ${key}`)
+  }
+  return field
+}

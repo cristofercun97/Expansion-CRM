@@ -24,7 +24,7 @@ export const PRESENTATION_EDITOR_STEPS: PresentationEditorStep[] = [
     label: 'Publicación',
     shortLabel: 'Publicar',
     emoji: '🚀',
-    description: 'Define tu enlace público y el estado de tu presentación.',
+    description: 'Configura cómo se mostrará tu presentación.',
   },
   {
     id: 'visualIdentity',

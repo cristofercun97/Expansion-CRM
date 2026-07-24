@@ -88,6 +88,9 @@ service cloud.firestore {
         'source',
         'name',
         'whatsapp',
+        'countryCode',
+        'countryName',
+        'city',
         'interest',
         'message',
         'whatsappGroupUrl',
@@ -110,12 +113,17 @@ service cloud.firestore {
         data.status == 'new' &&
         (!('name' in data) || (data.name is string && data.name.size() >= 2)) &&
         (!('whatsapp' in data) || (data.whatsapp is string && data.whatsapp.size() >= 6)) &&
+        (!('countryCode' in data) || (data.countryCode is string && data.countryCode.size() == 2)) &&
+        (!('countryName' in data) || (data.countryName is string && data.countryName.size() > 0)) &&
+        (!('city' in data) || (data.city is string && data.city.size() > 0)) &&
         (!('interest' in data) || (data.interest is string && data.interest.size() > 0)) &&
         (!('message' in data) || (data.message is string && data.message.size() <= 500)) &&
         (!('whatsappGroupUrl' in data) || (data.whatsappGroupUrl is string && data.whatsappGroupUrl.size() > 0)) &&
         (
           ('name' in data && data.name.size() >= 2) ||
           ('whatsapp' in data && data.whatsapp.size() >= 6) ||
+          ('countryCode' in data && data.countryCode.size() == 2) ||
+          ('city' in data && data.city.size() > 0) ||
           ('interest' in data && data.interest.size() > 0) ||
           ('message' in data && data.message.size() > 0)
         );
@@ -1108,7 +1116,7 @@ service cloud.firestore {
     function isValidGroupActivationRequestCreate() {
       // ⚠️ CRÍTICO — upgrade 160€/año. Debe coincidir con requestGroupActivation() en group-activation.service.ts
       let data = request.resource.data;
-      let allowedKeys = [
+      let baseKeys = [
         'requesterUid',
         'requesterEmail',
         'requesterName',
@@ -1117,21 +1125,68 @@ service cloud.firestore {
         'currency',
         'status',
         'requestedAt',
+        'paymentMethod',
+        'paymentReference',
+        'proofUrl',
+        'proofFileName',
+        'proofContentType',
+      ];
+      let cryptoKeys = [
+        'requesterUid',
+        'requesterEmail',
+        'requesterName',
+        'currentHomeTeamId',
+        'amount',
+        'currency',
+        'status',
+        'requestedAt',
+        'paymentMethod',
+        'paymentReference',
+        'proofUrl',
+        'proofFileName',
+        'proofContentType',
+        'cryptoCurrency',
+        'cryptoNetwork',
+        'cryptoAddress',
       ];
 
       return isSignedIn() &&
         isEmailVerified() &&
-        data.keys().hasOnly(allowedKeys) &&
         data.requesterUid == request.auth.uid &&
         data.requesterEmail is string &&
         data.requesterEmail.size() > 0 &&
+        data.requesterEmail.size() <= 320 &&
         data.requesterName is string &&
         data.requesterName.size() > 0 &&
+        data.requesterName.size() <= 120 &&
         data.currentHomeTeamId is string &&
         data.amount == 160 &&
         data.currency == 'EUR' &&
         data.status == 'pending' &&
-        data.requestedAt == request.time;
+        data.requestedAt == request.time &&
+        data.proofUrl is string &&
+        data.proofUrl.size() > 0 &&
+        data.proofUrl.size() <= 2000 &&
+        data.proofFileName is string &&
+        data.proofFileName.size() > 0 &&
+        data.proofFileName.size() <= 200 &&
+        data.proofContentType in ['image/jpeg', 'image/png', 'application/pdf'] &&
+        data.paymentReference is string &&
+        data.paymentReference.size() <= 200 &&
+        (
+          (
+            data.paymentMethod == 'paypal' &&
+            data.keys().hasOnly(baseKeys)
+          ) ||
+          (
+            data.paymentMethod == 'usdt_trc20' &&
+            data.keys().hasOnly(cryptoKeys) &&
+            data.paymentReference.size() > 0 &&
+            data.cryptoCurrency == 'USDT' &&
+            data.cryptoNetwork == 'TRON_TRC20' &&
+            data.cryptoAddress == 'TUtGttKESgmPz7nP2pH8GYitRR23YNpwZc'
+          )
+        );
     }
 
     function isValidGroupActivationRequestReview() {
@@ -1148,6 +1203,14 @@ service cloud.firestore {
         data.amount == previous.amount &&
         data.currency == previous.currency &&
         data.requestedAt == previous.requestedAt &&
+        data.get('paymentMethod', null) == previous.get('paymentMethod', null) &&
+        data.get('paymentReference', '') == previous.get('paymentReference', '') &&
+        data.get('proofUrl', '') == previous.get('proofUrl', '') &&
+        data.get('proofFileName', '') == previous.get('proofFileName', '') &&
+        data.get('proofContentType', '') == previous.get('proofContentType', '') &&
+        data.get('cryptoCurrency', null) == previous.get('cryptoCurrency', null) &&
+        data.get('cryptoNetwork', null) == previous.get('cryptoNetwork', null) &&
+        data.get('cryptoAddress', null) == previous.get('cryptoAddress', null) &&
         data.reviewedAt == request.time &&
         data.reviewedBy == request.auth.uid &&
         (
@@ -2000,7 +2063,7 @@ service cloud.firestore {
         data.message is string &&
         data.message.size() > 0 &&
         data.message.size() <= 2000 &&
-        data.type in ['follow_up', 'task', 'academy', 'recognition'] &&
+        data.type in ['follow_up', 'task', 'academy', 'recognition', 'sales_goal_result'] &&
         data.status == 'unread' &&
         data.createdAt == request.time &&
         isTeamOwnedByAuth(data.teamId) &&
@@ -2008,11 +2071,62 @@ service cloud.firestore {
         (
           !('relatedContext' in data) ||
           (
-            data.relatedContext.source in ['team_progress', 'academy', 'action_plan'] &&
             (
-              !('priority' in data.relatedContext) ||
-              data.relatedContext.priority in ['high', 'medium', 'low']
+              data.type != 'sales_goal_result' &&
+              data.relatedContext.source in ['team_progress', 'academy', 'action_plan'] &&
+              (
+                !('priority' in data.relatedContext) ||
+                data.relatedContext.priority in ['high', 'medium', 'low']
+              )
+            ) ||
+            (
+              data.type == 'sales_goal_result' &&
+              isValidSalesGoalResultReminderContext(data.relatedContext)
             )
+          )
+        );
+    }
+
+    function isValidSalesGoalResultReminderContext(context) {
+      return context is map &&
+        context.keys().hasOnly([
+          'source',
+          'goalId',
+          'historyId',
+          'amount',
+          'currency',
+          'outcome',
+          'periodLabel',
+          'priority',
+          'ctaPath',
+        ]) &&
+        context.source == 'sales_goal' &&
+        context.goalId is string &&
+        context.goalId.size() > 0 &&
+        context.historyId is string &&
+        context.historyId.size() > 0 &&
+        context.amount is number &&
+        context.amount >= 0 &&
+        context.currency in ['EUR', 'USD'] &&
+        context.outcome in ['achieved', 'missed'] &&
+        (
+          !('periodLabel' in context) ||
+          (
+            context.periodLabel is string &&
+            context.periodLabel.size() > 0 &&
+            context.periodLabel.size() <= 120
+          )
+        ) &&
+        (
+          !('priority' in context) ||
+          context.priority in ['high', 'medium', 'low']
+        ) &&
+        (
+          !('ctaPath' in context) ||
+          (
+            context.ctaPath is string &&
+            context.ctaPath.size() > 0 &&
+            context.ctaPath.size() <= 200
           )
         );
     }
@@ -2947,6 +3061,138 @@ service cloud.firestore {
       allow update: if isAdmin() || isValidTeamSalesReportUpdate();
 
       allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // teamSalesGoalHistory/{historyId}
+    // PERMITE:
+    //   - create: owner al cerrar un periodo vencido (docId == goalId).
+    //   - read: admin, owner o miembro activo del team.
+    // BLOQUEA:
+    //   - update/delete por clientes (histórico inmutable).
+    // -------------------------------------------------------------------------
+    function isValidSalesGoalOutcome(outcome) {
+      return outcome in ['achieved', 'missed'];
+    }
+
+    function isValidSalesGoalMemberBreakdownEntry(entry) {
+      return entry is map &&
+        entry.keys().hasOnly([
+          'memberUid',
+          'memberName',
+          'validatedAmount',
+          'reportedCount',
+          'validatedCount',
+        ]) &&
+        entry.memberUid is string &&
+        entry.memberUid.size() > 0 &&
+        entry.memberUid.size() <= 128 &&
+        entry.memberName is string &&
+        entry.memberName.size() > 0 &&
+        entry.memberName.size() <= 120 &&
+        entry.validatedAmount is number &&
+        entry.validatedAmount >= 0 &&
+        entry.reportedCount is number &&
+        entry.reportedCount >= 0 &&
+        entry.validatedCount is number &&
+        entry.validatedCount >= 0;
+    }
+
+    function isValidSalesGoalMemberBreakdown(breakdown) {
+      return breakdown is list &&
+        breakdown.size() <= 100 &&
+        (
+          breakdown.size() == 0 ||
+          (
+            isValidSalesGoalMemberBreakdownEntry(breakdown[0]) &&
+            (breakdown.size() < 2 || isValidSalesGoalMemberBreakdownEntry(breakdown[1])) &&
+            (breakdown.size() < 3 || isValidSalesGoalMemberBreakdownEntry(breakdown[2])) &&
+            (breakdown.size() < 4 || isValidSalesGoalMemberBreakdownEntry(breakdown[3])) &&
+            (breakdown.size() < 5 || isValidSalesGoalMemberBreakdownEntry(breakdown[4])) &&
+            (breakdown.size() < 6 || isValidSalesGoalMemberBreakdownEntry(breakdown[5])) &&
+            (breakdown.size() < 7 || isValidSalesGoalMemberBreakdownEntry(breakdown[6])) &&
+            (breakdown.size() < 8 || isValidSalesGoalMemberBreakdownEntry(breakdown[7])) &&
+            (breakdown.size() < 9 || isValidSalesGoalMemberBreakdownEntry(breakdown[8])) &&
+            (breakdown.size() < 10 || isValidSalesGoalMemberBreakdownEntry(breakdown[9])) &&
+            (breakdown.size() < 11 || isValidSalesGoalMemberBreakdownEntry(breakdown[10])) &&
+            (breakdown.size() < 12 || isValidSalesGoalMemberBreakdownEntry(breakdown[11])) &&
+            (breakdown.size() < 13 || isValidSalesGoalMemberBreakdownEntry(breakdown[12])) &&
+            (breakdown.size() < 14 || isValidSalesGoalMemberBreakdownEntry(breakdown[13])) &&
+            (breakdown.size() < 15 || isValidSalesGoalMemberBreakdownEntry(breakdown[14])) &&
+            (breakdown.size() < 16 || isValidSalesGoalMemberBreakdownEntry(breakdown[15])) &&
+            (breakdown.size() < 17 || isValidSalesGoalMemberBreakdownEntry(breakdown[16])) &&
+            (breakdown.size() < 18 || isValidSalesGoalMemberBreakdownEntry(breakdown[17])) &&
+            (breakdown.size() < 19 || isValidSalesGoalMemberBreakdownEntry(breakdown[18])) &&
+            (breakdown.size() < 20 || isValidSalesGoalMemberBreakdownEntry(breakdown[19])) &&
+            breakdown.size() <= 20
+          )
+        );
+    }
+
+    function isValidTeamSalesGoalHistoryCreate(historyId) {
+      let data = request.resource.data;
+      let allowedKeys = [
+        'teamId',
+        'goalId',
+        'ownerUid',
+        'periodType',
+        'periodKey',
+        'periodLabel',
+        'currency',
+        'targetAmount',
+        'finalAmount',
+        'outcome',
+        'memberBreakdown',
+        'closedAt',
+        'createdAt',
+        'notifiedAt',
+      ];
+
+      return isSignedIn() &&
+        isEmailVerified() &&
+        data.keys().hasOnly(allowedKeys) &&
+        data.teamId is string &&
+        data.teamId.size() > 0 &&
+        data.goalId == historyId &&
+        data.goalId is string &&
+        data.goalId.size() > 0 &&
+        data.ownerUid == request.auth.uid &&
+        isValidSalesGoalPeriodType(data.periodType) &&
+        data.periodKey is string &&
+        data.periodKey.size() > 0 &&
+        data.periodKey.size() <= 80 &&
+        data.periodLabel is string &&
+        data.periodLabel.size() > 0 &&
+        data.periodLabel.size() <= 120 &&
+        isValidSalesGoalCurrency(data.currency) &&
+        data.targetAmount is number &&
+        data.targetAmount > 0 &&
+        data.finalAmount is number &&
+        data.finalAmount >= 0 &&
+        isValidSalesGoalOutcome(data.outcome) &&
+        isValidSalesGoalMemberBreakdown(data.memberBreakdown) &&
+        data.closedAt == request.time &&
+        data.createdAt == request.time &&
+        data.notifiedAt == request.time &&
+        isTeamOwnedByAuth(data.teamId) &&
+        exists(/databases/$(database)/documents/teamSalesGoals/$(data.goalId)) &&
+        get(/databases/$(database)/documents/teamSalesGoals/$(data.goalId)).data.teamId == data.teamId &&
+        get(/databases/$(database)/documents/teamSalesGoals/$(data.goalId)).data.ownerUid == data.ownerUid &&
+        get(/databases/$(database)/documents/teamSalesGoals/$(data.goalId)).data.periodKey == data.periodKey;
+    }
+
+    function canReadTeamSalesGoalHistory() {
+      return isAdmin() ||
+        isTeamOwnedByAuth(resource.data.teamId) ||
+        isActiveTeamMember(resource.data.teamId);
+    }
+
+    match /teamSalesGoalHistory/{historyId} {
+      allow create: if isAdmin() || isValidTeamSalesGoalHistoryCreate(historyId);
+
+      allow read: if canReadTeamSalesGoalHistory();
+
+      allow update, delete: if isAdmin();
     }
 
     function referralRewardAmountForLevel(level) {

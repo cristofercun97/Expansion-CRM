@@ -34,16 +34,16 @@ export function PresentationPreviewHeader({ form }: PresentationPreviewHeaderPro
           target={external ? '_blank' : undefined}
           rel={external ? 'noopener noreferrer' : undefined}
           className={cn(
-            'inline-flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-full px-3.5 py-2',
-            'text-xs font-semibold shadow-sm transition-opacity hover:opacity-90 sm:gap-2 sm:px-5 sm:text-sm',
+            'inline-flex min-h-11 max-w-[46%] shrink-0 items-center justify-center gap-1.5 rounded-full px-3 py-2',
+            'text-xs font-semibold shadow-sm transition-opacity hover:opacity-90 sm:max-w-none sm:gap-2 sm:px-5 sm:text-sm',
           )}
           style={{
             backgroundColor: 'var(--preview-header-button-bg)',
             color: 'var(--preview-header-button-text)',
           }}
         >
-          {ctaText}
-          <ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" aria-hidden="true" />
+          <span className="truncate">{ctaText}</span>
+          <ArrowRight className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" aria-hidden="true" />
         </a>
       </div>
     </header>

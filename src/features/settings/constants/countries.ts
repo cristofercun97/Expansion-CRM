@@ -75,7 +75,7 @@ export const COUNTRY_OPTIONS: CountryOption[] = COUNTRY_DATA.map(([code, name]) 
   code,
   name,
   flag: countryFlag(code),
-}))
+})).sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }))
 
 export function findCountryByCode(code: string): CountryOption | undefined {
   const normalized = code.trim().toUpperCase()

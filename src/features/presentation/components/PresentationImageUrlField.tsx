@@ -92,9 +92,8 @@ export function PresentationImageUrlField({
           <Button
             type="button"
             variant="outline"
-            size="sm"
             disabled={disabled || uploading || !ownerUid}
-            className="border-petrol-dark/15 bg-white text-text-dark hover:bg-petrol-dark/5"
+            className="min-h-10 w-full border-petrol-dark/15 bg-white text-text-dark hover:bg-petrol-dark/5 sm:w-auto"
             onClick={() => fileInputRef.current?.click()}
           >
             {uploading ? (

@@ -47,7 +47,7 @@ export function LandingFooter() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="w-full border-white/20 bg-transparent text-hero-text hover:border-teal-accent hover:bg-teal-accent/10 sm:w-auto"
+                  className="w-full border-white/20 bg-transparent text-hero-text hover:border-[#6AC5BC] hover:bg-[#6AC5BC]/10 hover:text-[#6AC5BC] sm:w-auto"
                 >
                   <LogIn className="h-4 w-4" aria-hidden="true" />
                   Iniciar sesión
@@ -84,7 +84,7 @@ export function LandingFooter() {
                   <li key={link.label}>
                     <Link
                       to={link.to}
-                      className="text-sm text-hero-text/75 transition-colors hover:text-gold-light"
+                      className="text-sm text-hero-text/75 transition-colors hover:text-[#6AC5BC]"
                     >
                       {link.label}
                     </Link>

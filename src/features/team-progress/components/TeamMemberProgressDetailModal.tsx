@@ -5,6 +5,7 @@ import {
   getActionTaskPriorityLabel,
   getActionTaskStatusLabel,
 } from '@/features/action-plan/utils/actionTaskLabels'
+import type { AcademyMaterial } from '@/features/academy/types/academy.types'
 import type { AcademyTestAttempt } from '@/features/academy/types/academy-test-attempt.types'
 import type { AcademyTest } from '@/features/academy/types/academy-test.types'
 import { formatContactDateTime } from '@/features/contacts/utils/formatContactDate'
@@ -40,6 +41,7 @@ type TeamMemberProgressDetailModalProps = {
   taskProgress: TeamMemberTaskProgressItem[]
   memberReminders: TeamReminder[]
   testsById: Record<string, AcademyTest>
+  materialsById?: Record<string, AcademyMaterial>
   commercialSummary?: SalesMemberCommercialSummary | null
   salesGoal?: TeamSalesGoal | null
   salesReports?: TeamSalesReport[]
@@ -72,6 +74,7 @@ export function TeamMemberProgressDetailModal({
   taskProgress,
   memberReminders,
   testsById,
+  materialsById = {},
   commercialSummary = null,
   salesGoal = null,
   salesReports = [],
@@ -220,7 +223,9 @@ export function TeamMemberProgressDetailModal({
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-hero-text">{module.title}</p>
                       <p className="text-xs text-hero-text/60">
-                        {module.reviewed ? 'Revisado' : 'Pendiente'}
+                        {module.reviewed
+                          ? `Revisado${module.openCount > 1 ? ` ${module.openCount} veces` : ''}`
+                          : 'Pendiente'}
                         {module.lastOpenedAt
                           ? ` · Última apertura: ${formatContactDateTime(module.lastOpenedAt)}`
                           : ''}
@@ -239,7 +244,9 @@ export function TeamMemberProgressDetailModal({
                 <ul className="mt-2 space-y-2">
                   {attempts.map((attempt) => {
                     const test = testsById[attempt.testId]
+                    const material = materialsById[attempt.materialId]
                     const label = test?.title ?? attempt.testId
+                    const materialLabel = material?.title
 
                     return (
                       <li
@@ -247,6 +254,9 @@ export function TeamMemberProgressDetailModal({
                         className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm"
                       >
                         <p className="font-medium text-hero-text">{label}</p>
+                        {materialLabel ? (
+                          <p className="mt-0.5 text-xs text-hero-text/55">{materialLabel}</p>
+                        ) : null}
                         <p className="mt-1 text-hero-text/70">
                           Score: {attempt.score}/100 · {attempt.correctAnswers}/
                           {attempt.totalQuestions} correctas

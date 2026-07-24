@@ -1,6 +1,6 @@
 import { Loader2 } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
-import { presentationFormPreviewFields } from '@/features/presentation/constants/presentationDefaults'
+import { getPresentationFormPreviewField } from '@/features/presentation/constants/presentationDefaults'
 import { presentationProspectsService, getPresentationProspectSubmitErrorMessage } from '@/features/presentation/services/prospects.service'
 import type { PresentationFormConfig } from '@/features/presentation/types/presentation.types'
 import type { PresentationProspectFormValues } from '@/features/presentation/types/prospect.types'
@@ -11,6 +11,8 @@ import {
   hasPresentationProspectFormErrors,
   validatePresentationProspectForm,
 } from '@/features/presentation/utils/presentationProspectUtils'
+import { getCitiesForCountry } from '@/features/settings/constants/citiesByCountry'
+import { COUNTRY_OPTIONS } from '@/features/settings/constants/countries'
 import { cn } from '@/lib/utils'
 
 type PresentationPublicFormProps = {
@@ -42,6 +44,8 @@ export function PresentationPublicForm({
   const [values, setValues] = useState<PresentationProspectFormValues>({
     name: '',
     whatsapp: '',
+    countryCode: '',
+    city: '',
     interest: '',
     message: '',
   })
@@ -52,6 +56,25 @@ export function PresentationPublicForm({
 
   const whatsappGroupUrl = formConfig.whatsappGroupUrl.trim()
   const formEnabled = hasEnabledPresentationFormFields(formConfig)
+  const cityOptions = useMemo(
+    () => getCitiesForCountry(values.countryCode),
+    [values.countryCode],
+  )
+
+  const nameField = getPresentationFormPreviewField('name')
+  const whatsappField = getPresentationFormPreviewField('whatsapp')
+  const countryField = getPresentationFormPreviewField('country')
+  const cityField = getPresentationFormPreviewField('city')
+  const interestField = getPresentationFormPreviewField('interest')
+  const messageField = getPresentationFormPreviewField('message')
+
+  function handleCountryChange(countryCode: string) {
+    setValues((current) => ({
+      ...current,
+      countryCode,
+      city: '',
+    }))
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -138,7 +161,7 @@ export function PresentationPublicForm({
       {formConfig.nameEnabled ? (
         <div className="flex flex-col gap-1.5">
           <label htmlFor="presentation-prospect-name" className="text-sm font-medium text-[#071B25]">
-            {presentationFormPreviewFields[0].label}
+            {nameField.label}
             <span className="text-red-600" aria-hidden="true">
               {' '}
               *
@@ -152,7 +175,7 @@ export function PresentationPublicForm({
             required
             minLength={2}
             disabled={isSubmitting}
-            placeholder={presentationFormPreviewFields[0].placeholder}
+            placeholder={nameField.placeholder}
             value={values.name}
             onChange={(event) => setValues((current) => ({ ...current, name: event.target.value }))}
             aria-invalid={Boolean(fieldErrors.name)}
@@ -173,7 +196,7 @@ export function PresentationPublicForm({
             htmlFor="presentation-prospect-whatsapp"
             className="text-sm font-medium text-[#071B25]"
           >
-            {presentationFormPreviewFields[1].label}
+            {whatsappField.label}
             <span className="text-red-600" aria-hidden="true">
               {' '}
               *
@@ -188,7 +211,7 @@ export function PresentationPublicForm({
             minLength={6}
             inputMode="tel"
             disabled={isSubmitting}
-            placeholder={presentationFormPreviewFields[1].placeholder}
+            placeholder={whatsappField.placeholder}
             value={values.whatsapp}
             onChange={(event) =>
               setValues((current) => ({ ...current, whatsapp: event.target.value }))
@@ -210,13 +233,112 @@ export function PresentationPublicForm({
         </div>
       ) : null}
 
+      {formConfig.countryEnabled || formConfig.cityEnabled ? (
+        <div className="grid gap-5 sm:grid-cols-2">
+          {formConfig.countryEnabled ? (
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="presentation-prospect-country"
+                className="text-sm font-medium text-[#071B25]"
+              >
+                {countryField.label}
+                <span className="text-red-600" aria-hidden="true">
+                  {' '}
+                  *
+                </span>
+              </label>
+              <select
+                id="presentation-prospect-country"
+                name="countryCode"
+                required
+                disabled={isSubmitting}
+                value={values.countryCode}
+                onChange={(event) => handleCountryChange(event.target.value)}
+                aria-invalid={Boolean(fieldErrors.countryCode)}
+                aria-describedby={
+                  fieldErrors.countryCode ? 'presentation-prospect-country-error' : undefined
+                }
+                className={cn(
+                  inputClassName,
+                  fieldErrors.countryCode &&
+                    'border-red-400 focus:border-red-400 focus:ring-red-400/20',
+                )}
+              >
+                <option value="" disabled>
+                  {countryField.placeholder}
+                </option>
+                {COUNTRY_OPTIONS.map((country) => (
+                  <option key={country.code} value={country.code}>
+                    {`${country.flag} ${country.name}`}
+                  </option>
+                ))}
+              </select>
+              {fieldErrors.countryCode ? (
+                <p id="presentation-prospect-country-error" className="text-xs text-red-600">
+                  {fieldErrors.countryCode}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {formConfig.cityEnabled ? (
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="presentation-prospect-city"
+                className="text-sm font-medium text-[#071B25]"
+              >
+                {cityField.label}
+                <span className="text-red-600" aria-hidden="true">
+                  {' '}
+                  *
+                </span>
+              </label>
+              <select
+                id="presentation-prospect-city"
+                name="city"
+                required
+                disabled={isSubmitting || !values.countryCode || cityOptions.length === 0}
+                value={values.city}
+                onChange={(event) =>
+                  setValues((current) => ({ ...current, city: event.target.value }))
+                }
+                aria-invalid={Boolean(fieldErrors.city)}
+                aria-describedby={
+                  fieldErrors.city ? 'presentation-prospect-city-error' : undefined
+                }
+                className={cn(
+                  inputClassName,
+                  fieldErrors.city && 'border-red-400 focus:border-red-400 focus:ring-red-400/20',
+                )}
+              >
+                <option value="" disabled>
+                  {!values.countryCode
+                    ? 'Primero selecciona un país'
+                    : cityField.placeholder}
+                </option>
+                {cityOptions.map((city) => (
+                  <option key={city} value={city}>
+                    {city}
+                  </option>
+                ))}
+              </select>
+              {fieldErrors.city ? (
+                <p id="presentation-prospect-city-error" className="text-xs text-red-600">
+                  {fieldErrors.city}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       {formConfig.interestEnabled ? (
         <div className="flex flex-col gap-2">
           <label
             htmlFor="presentation-prospect-interest"
             className="text-sm font-medium text-[#071B25]"
           >
-            {presentationFormPreviewFields[2].label}
+            {interestField.label}
             <span className="text-red-600" aria-hidden="true">
               {' '}
               *
@@ -241,7 +363,7 @@ export function PresentationPublicForm({
             )}
           >
             <option value="" disabled>
-              {presentationFormPreviewFields[2].placeholder}
+              {interestField.placeholder}
             </option>
             {interestOptions.map((option) => (
               <option key={option} value={option}>
@@ -263,7 +385,7 @@ export function PresentationPublicForm({
             htmlFor="presentation-prospect-message"
             className="text-sm font-medium text-[#071B25]"
           >
-            {presentationFormPreviewFields[3].label}
+            {messageField.label}
           </label>
           <textarea
             id="presentation-prospect-message"
@@ -271,7 +393,7 @@ export function PresentationPublicForm({
             rows={3}
             maxLength={500}
             disabled={isSubmitting}
-            placeholder={presentationFormPreviewFields[3].placeholder}
+            placeholder={messageField.placeholder}
             value={values.message}
             onChange={(event) =>
               setValues((current) => ({ ...current, message: event.target.value }))

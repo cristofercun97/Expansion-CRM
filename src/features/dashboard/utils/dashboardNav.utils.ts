@@ -1,6 +1,6 @@
 import { adminNavItems } from '@/features/admin/constants/adminNavItems'
 import { canAccessOwnerModules } from '@/features/access/utils/canAccessOwnerModules'
-import { canSeeAcademyProgressNav } from '@/features/access/utils/canAccessAcademyProgress'
+import { canSeeTeamProgressNav } from '@/features/access/utils/canAccessTeamProgress'
 import { dashboardNavItems } from '@/features/dashboard/constants/dashboardDemoData'
 import type { DashboardNavItem } from '@/features/dashboard/types/dashboard.types'
 import type { AppUser } from '@/types'
@@ -13,7 +13,6 @@ const MOBILE_NAV_LABELS: Partial<Record<string, string>> = {
   '/dashboard/radar': 'Radar',
   '/dashboard/contactos': 'Contactos',
   '/dashboard/academia': 'Academia',
-  '/dashboard/progreso-academia': 'Progreso',
   '/dashboard/progreso-equipo': 'Equipo',
   '/dashboard/plan': 'Plan',
   '/dashboard/reconocimientos': 'Premios',
@@ -40,7 +39,7 @@ export function resolveDashboardNavItems(
       return false
     }
 
-    if (item.activationOnly && !canSeeAcademyProgressNav(appUser)) {
+    if (item.activationOnly && !canSeeTeamProgressNav(appUser)) {
       return false
     }
 

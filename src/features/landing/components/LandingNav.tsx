@@ -20,7 +20,7 @@ export function LandingNav() {
             <Button
               variant="outline"
               size="sm"
-              className="border-white/20 bg-transparent px-2.5 text-hero-text hover:border-teal-accent hover:bg-teal-accent/10 sm:px-3"
+              className="border-white/20 bg-transparent px-2.5 text-hero-text hover:border-[#6AC5BC] hover:bg-[#6AC5BC]/10 hover:text-[#6AC5BC] sm:px-3"
               aria-label="Iniciar sesión"
             >
               <LogIn className="h-4 w-4" aria-hidden="true" />

@@ -4,6 +4,12 @@ import { Button, EmptyState, PageHeader } from '@/components/ui'
 import { useToast } from '@/components/ui/toast/ToastProvider'
 import { useAuth } from '@/features/auth/hooks/useAuth'
 import { ActionPlanBlockedState } from '@/features/action-plan/components/ActionPlanBlockedState'
+import {
+  ActionPlanFocusBar,
+  type ActionPlanFocusAction,
+  type ActionPlanSectionId,
+} from '@/features/action-plan/components/ActionPlanFocusBar'
+import { ActionPlanHelpModal } from '@/features/action-plan/components/ActionPlanHelpModal'
 import { TeamActionMapSection } from '@/features/action-plan/components/TeamActionMapSection'
 import { ActionTaskList } from '@/features/action-plan/components/ActionTaskList'
 import { ActionTaskManagedList } from '@/features/action-plan/components/ActionTaskManagedList'
@@ -26,7 +32,7 @@ import type {
   ActionTaskStatus,
   CreateActionTaskInput,
 } from '@/features/action-plan/types/action-plan.types'
-import { buildProgressMapByTaskId } from '@/features/action-plan/utils/actionTaskProgressUtils'
+import { buildProgressMapByTaskId, getMemberProgressStatus } from '@/features/action-plan/utils/actionTaskProgressUtils'
 import { SalesGoalCard } from '@/features/sales-goals/components/SalesGoalCard'
 
 function logActionPlanDevError(message: string, error: unknown): void {
@@ -79,6 +85,10 @@ export function ActionPlanPage() {
   const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null)
   const [progressError, setProgressError] = useState('')
   const [teamMemberOptions, setTeamMemberOptions] = useState<ActionTaskTeamMemberOption[]>([])
+  const [activeSectionOverride, setActiveSectionOverride] = useState<ActionPlanSectionId | null>(
+    null,
+  )
+  const [isHelpOpen, setIsHelpOpen] = useState(false)
 
   const uid = currentUser?.uid
   const memberTeamId = teamContext.memberTeamId
@@ -526,6 +536,65 @@ export function ActionPlanPage() {
     !teamContext.isBlocked &&
     (teamContext.canManageTeamTasks || isAdminWithoutTeam)
 
+  const planFocus = useMemo((): ActionPlanFocusAction => {
+    if (isSalesLeader || teamContext.hasManagedSection) {
+      if (!managedSection.loading && managedTasks.length === 0) {
+        return {
+          eyebrow: 'Siguiente paso',
+          title: 'Crea la primera tarea del plan',
+          description: 'Convierte el mapa en acciones concretas para tu equipo.',
+          ctaLabel: showCreateButton ? 'Agregar tarea' : undefined,
+          onCta: showCreateButton ? () => setIsCreateModalOpen(true) : undefined,
+          targetId: 'plan-tareas',
+        }
+      }
+
+      return {
+        eyebrow: 'Tu foco de hoy',
+        title: 'Revisa ventas, mapa y avance del equipo',
+        description: 'Valida ventas pendientes, mira el mapa y acompaña las tareas en curso.',
+        targetId: 'plan-ventas',
+      }
+    }
+
+    const pendingMemberTasks = memberTasks.filter(
+      (task) => getMemberProgressStatus(memberProgressByTaskId, task.id) === 'pending',
+    ).length
+
+    if (pendingMemberTasks > 0) {
+      return {
+        eyebrow: 'Siguiente paso',
+        title:
+          pendingMemberTasks === 1
+            ? 'Tienes 1 tarea pendiente'
+            : `Tienes ${pendingMemberTasks} tareas pendientes`,
+        description: 'Actualiza tu progreso para que el grupo vea tu avance.',
+        targetId: 'plan-tareas',
+      }
+    }
+
+    return {
+      eyebrow: 'Tu foco de hoy',
+      title: 'Reporta ventas y avanza en tus tareas',
+      description: 'Cada venta validada y cada tarea completada acercan al grupo a la meta.',
+      targetId: 'plan-ventas',
+    }
+  }, [
+    isSalesLeader,
+    managedSection.loading,
+    managedTasks.length,
+    memberProgressByTaskId,
+    memberTasks,
+    showCreateButton,
+    teamContext.hasManagedSection,
+  ])
+
+  const activeSection = activeSectionOverride ?? planFocus.targetId
+
+  useEffect(() => {
+    setActiveSectionOverride(null)
+  }, [teamContextSelection.mode])
+
   if (initialized && !authLoading && !currentUser) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center px-8 py-8">
@@ -547,13 +616,16 @@ export function ActionPlanPage() {
     <div className="space-y-8 px-4 py-8 sm:px-8">
       <PageHeader
         title="Plan de Acción"
-        subtitle="Organiza objetivos compartidos de tu grupo y da seguimiento a tu avance."
+        subtitle="Elige Ventas, Mapa o Tareas para enfocarte en una sola cosa a la vez."
         className="border-white/10 [&_h1]:text-hero-text [&_p]:text-hero-text/70"
         actions={
           showCreateButton ? (
             <Button
               type="button"
-              onClick={() => setIsCreateModalOpen(true)}
+              onClick={() => {
+                setActiveSectionOverride('plan-tareas')
+                setIsCreateModalOpen(true)
+              }}
               className="bg-gold text-petrol-deep hover:bg-gold-light"
             >
               <Plus className="h-4 w-4" aria-hidden="true" />
@@ -581,152 +653,192 @@ export function ActionPlanPage() {
         <ActionPlanBlockedState />
       ) : (
         <>
+          <ActionPlanFocusBar
+            focus={planFocus}
+            activeSection={activeSection}
+            onSectionChange={setActiveSectionOverride}
+            onOpenHelp={() => setIsHelpOpen(true)}
+          />
+
+          <ActionPlanHelpModal
+            open={isHelpOpen}
+            isLeader={isSalesLeader || teamContext.hasManagedSection}
+            initialSection={activeSection}
+            onClose={() => setIsHelpOpen(false)}
+            onGoToSection={setActiveSectionOverride}
+          />
+
           {progressError ? (
             <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
               {progressError}
             </div>
           ) : null}
 
-          {salesTeamId ? (
-            <SalesGoalCard
-              teamId={salesTeamId}
-              isLeader={isSalesLeader}
-              contextQuery={teamContextSelection.mode ?? undefined}
-            />
+          {activeSection === 'plan-ventas' ? (
+            salesTeamId ? (
+              <SalesGoalCard
+                teamId={salesTeamId}
+                isLeader={isSalesLeader}
+                contextQuery={teamContextSelection.mode ?? undefined}
+              />
+            ) : (
+              <p className="rounded-xl border border-dashed border-white/15 bg-white/5 px-4 py-4 text-sm text-hero-text/70">
+                No hay un grupo activo para ver ventas en este contexto.
+              </p>
+            )
           ) : null}
 
-          {managedTeamId && uid ? (
-            <TeamActionMapSection
-              teamId={managedTeamId}
-              ownerUid={uid}
-              canEdit={teamContext.canManageTeamTasks}
-              sectionLabel="Mapa activo del grupo que administras"
-              linkedTasks={managedTasks}
-            />
+          {activeSection === 'plan-mapa' ? (
+            managedTeamId && uid ? (
+              <TeamActionMapSection
+                teamId={managedTeamId}
+                ownerUid={uid}
+                canEdit={teamContext.canManageTeamTasks}
+                sectionLabel="Brújula del grupo que lideras"
+                linkedTasks={managedTasks}
+              />
+            ) : memberTeamId ? (
+              <TeamActionMapSection
+                teamId={memberTeamId}
+                ownerUid={uid ?? ''}
+                canEdit={false}
+                sectionLabel="Brújula del grupo al que perteneces"
+                linkedTasks={memberTasks}
+              />
+            ) : (
+              <p className="rounded-xl border border-dashed border-white/15 bg-white/5 px-4 py-4 text-sm text-hero-text/70">
+                No hay un grupo activo para ver el mapa en este contexto.
+              </p>
+            )
           ) : null}
 
-          {memberTeamId ? (
-            <TeamActionMapSection
-              teamId={memberTeamId}
-              ownerUid={uid ?? ''}
-              canEdit={false}
-              sectionLabel="Mapa activo de mi grupo"
-              linkedTasks={memberTasks}
-            />
-          ) : null}
+          {activeSection === 'plan-tareas' ? (
+            <>
+              {isAdminWithoutTeam ? (
+                <section id="plan-tareas" className="space-y-4">
+                  {adminError ? (
+                    <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                      {adminError}
+                    </div>
+                  ) : adminTasks.length === 0 ? (
+                    <EmptyState
+                      icon={ClipboardList}
+                      title="Aún no tienes tareas"
+                      description="Crea tu primera tarea para empezar a organizar tu avance."
+                      className="border-white/15 bg-white/8 text-hero-text backdrop-blur-xl [&_h3]:text-hero-text [&_p]:text-hero-text/70"
+                      action={
+                        <Button
+                          type="button"
+                          onClick={() => setIsCreateModalOpen(true)}
+                          className="bg-gold text-petrol-deep hover:bg-gold-light"
+                        >
+                          <Plus className="h-4 w-4" aria-hidden="true" />
+                          Agregar tarea
+                        </Button>
+                      }
+                    />
+                  ) : (
+                    <ActionTaskList
+                      tasks={adminTasks}
+                      updatingTaskId={updatingTaskId}
+                      onStatusChange={handleAdminStatusChange}
+                    />
+                  )}
+                </section>
+              ) : null}
 
-          {isAdminWithoutTeam ? (
-            <section className="space-y-4">
-              {adminError ? (
-                <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                  {adminError}
-                </div>
-              ) : adminTasks.length === 0 ? (
-                <EmptyState
-                  icon={ClipboardList}
-                  title="Aún no tienes tareas"
-                  description="Crea tu primera acción para empezar."
-                  className="border-white/15 bg-white/8 text-hero-text backdrop-blur-xl [&_h3]:text-hero-text [&_p]:text-hero-text/70"
-                  action={
-                    <Button
-                      type="button"
-                      onClick={() => setIsCreateModalOpen(true)}
-                      className="bg-gold text-petrol-deep hover:bg-gold-light"
-                    >
-                      <Plus className="h-4 w-4" aria-hidden="true" />
-                      Agregar tarea
-                    </Button>
-                  }
-                />
-              ) : (
-                <ActionTaskList
-                  tasks={adminTasks}
-                  updatingTaskId={updatingTaskId}
-                  onStatusChange={handleAdminStatusChange}
-                />
-              )}
-            </section>
-          ) : null}
+              {teamContext.hasMemberSection ? (
+                <section id="plan-tareas" className="space-y-4">
+                  <div>
+                    <h2 className="text-xl font-semibold text-hero-text">Tareas del plan</h2>
+                    <p className="mt-1 text-sm text-hero-text/70">
+                      Acciones compartidas del grupo. Actualiza tu progreso en cada una.
+                    </p>
+                  </div>
 
-          {teamContext.hasMemberSection ? (
-            <section className="space-y-4">
-              <div>
-                <h2 className="text-xl font-semibold text-hero-text">Plan de mi grupo</h2>
-                <p className="mt-1 text-sm text-hero-text/70">
-                  Objetivos compartidos por el grupo al que perteneces.
-                </p>
-              </div>
+                  {memberSection.loading ? (
+                    <p className="flex items-center gap-2 text-sm text-hero-text/70">
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                      Cargando tareas del grupo...
+                    </p>
+                  ) : memberSection.error ? (
+                    <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                      {memberSection.error}
+                    </div>
+                  ) : memberTasks.length === 0 ? (
+                    <EmptyState
+                      icon={ClipboardList}
+                      title="Aún no hay tareas publicadas"
+                      description="Cuando tu líder publique tareas del plan, aparecerán aquí para que marques tu avance."
+                      className="border-white/15 bg-white/8 text-hero-text backdrop-blur-xl [&_h3]:text-hero-text [&_p]:text-hero-text/70"
+                    />
+                  ) : (
+                    <ActionTaskMemberList
+                      tasks={memberTasks}
+                      progressByTaskId={memberProgressByTaskId}
+                      updatingTaskId={updatingTaskId}
+                      onProgressChange={handleMemberProgressChange}
+                    />
+                  )}
+                </section>
+              ) : null}
 
-              {memberSection.loading ? (
-                <p className="flex items-center gap-2 text-sm text-hero-text/70">
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                  Cargando objetivos del grupo...
-                </p>
-              ) : memberSection.error ? (
-                <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                  {memberSection.error}
-                </div>
-              ) : memberTasks.length === 0 ? (
-                <p className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm text-hero-text/70">
-                  Tu grupo aún no ha publicado objetivos en el plan de acción.
-                </p>
-              ) : (
-                <ActionTaskMemberList
-                  tasks={memberTasks}
-                  progressByTaskId={memberProgressByTaskId}
-                  updatingTaskId={updatingTaskId}
-                  onProgressChange={handleMemberProgressChange}
-                />
-              )}
-            </section>
-          ) : null}
+              {teamContext.hasManagedSection ? (
+                <section id="plan-tareas" className="space-y-4">
+                  <div>
+                    <h2 className="text-xl font-semibold text-hero-text">Tareas del plan</h2>
+                    <p className="mt-1 text-sm text-hero-text/70">
+                      Crea y da seguimiento a las tareas de tu grupo.
+                    </p>
+                  </div>
 
-          {teamContext.hasManagedSection ? (
-            <section className="space-y-4">
-              <div>
-                <h2 className="text-xl font-semibold text-hero-text">Plan que administro</h2>
-                <p className="mt-1 text-sm text-hero-text/70">
-                  Crea y administra los objetivos de tu propio grupo.
-                </p>
-              </div>
+                  {managedSection.loading ? (
+                    <p className="flex items-center gap-2 text-sm text-hero-text/70">
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                      Cargando tareas del grupo...
+                    </p>
+                  ) : managedSection.error ? (
+                    <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                      {managedSection.error}
+                    </div>
+                  ) : managedTasks.length === 0 ? (
+                    <EmptyState
+                      icon={ClipboardList}
+                      title="Aún no hay tareas en tu grupo"
+                      description="Crea la primera tarea para que el equipo sepa qué avanzar esta semana."
+                      className="border-white/15 bg-white/8 text-hero-text backdrop-blur-xl [&_h3]:text-hero-text [&_p]:text-hero-text/70"
+                      action={
+                        <Button
+                          type="button"
+                          onClick={() => setIsCreateModalOpen(true)}
+                          className="bg-gold text-petrol-deep hover:bg-gold-light"
+                        >
+                          <Plus className="h-4 w-4" aria-hidden="true" />
+                          Agregar tarea
+                        </Button>
+                      }
+                    />
+                  ) : (
+                    <ActionTaskManagedList
+                      tasks={managedTasks}
+                      teamProgress={managedProgress}
+                      ownerUid={uid}
+                      ownerProgressByTaskId={managedOwnerProgressByTaskId}
+                      updatingTaskId={updatingTaskId}
+                      onOwnerProgressChange={handleManagedOwnerProgressChange}
+                    />
+                  )}
+                </section>
+              ) : null}
 
-              {managedSection.loading ? (
-                <p className="flex items-center gap-2 text-sm text-hero-text/70">
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                  Cargando objetivos administrados...
+              {!isAdminWithoutTeam &&
+              !teamContext.hasMemberSection &&
+              !teamContext.hasManagedSection ? (
+                <p className="rounded-xl border border-dashed border-white/15 bg-white/5 px-4 py-4 text-sm text-hero-text/70">
+                  No hay tareas disponibles en este contexto.
                 </p>
-              ) : managedSection.error ? (
-                <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                  {managedSection.error}
-                </div>
-              ) : managedTasks.length === 0 ? (
-                <EmptyState
-                  icon={ClipboardList}
-                  title="Aún no hay objetivos en tu grupo"
-                  description="Crea el primer objetivo para tu equipo."
-                  className="border-white/15 bg-white/8 text-hero-text backdrop-blur-xl [&_h3]:text-hero-text [&_p]:text-hero-text/70"
-                  action={
-                    <Button
-                      type="button"
-                      onClick={() => setIsCreateModalOpen(true)}
-                      className="bg-gold text-petrol-deep hover:bg-gold-light"
-                    >
-                      <Plus className="h-4 w-4" aria-hidden="true" />
-                      Agregar tarea
-                    </Button>
-                  }
-                />
-              ) : (
-                <ActionTaskManagedList
-                  tasks={managedTasks}
-                  teamProgress={managedProgress}
-                  ownerUid={uid}
-                  ownerProgressByTaskId={managedOwnerProgressByTaskId}
-                  updatingTaskId={updatingTaskId}
-                  onOwnerProgressChange={handleManagedOwnerProgressChange}
-                />
-              )}
-            </section>
+              ) : null}
+            </>
           ) : null}
 
           <CreateActionTaskModal

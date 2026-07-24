@@ -1,7 +1,9 @@
 import {
   AlertTriangle,
   BarChart3,
+  BookOpen,
   ClipboardList,
+  GraduationCap,
   Loader2,
   Radar,
   Sparkles,
@@ -151,6 +153,14 @@ export function TeamProgressPage() {
     return Object.fromEntries(data.tests.map((test) => [test.id, test]))
   }, [data])
 
+  const materialsById = useMemo(() => {
+    if (!data) {
+      return {}
+    }
+
+    return Object.fromEntries(data.materials.map((material) => [material.id, material]))
+  }, [data])
+
   const selectedAttempts = useMemo(() => {
     if (!data || !selectedMember) {
       return []
@@ -218,7 +228,7 @@ export function TeamProgressPage() {
       <div className="space-y-6 px-4 py-6 sm:px-8 sm:py-8">
         <PageHeader
           title="Progreso de Equipo"
-          subtitle="Visualiza el avance global de tus miembros y detecta quién necesita acompañamiento."
+          subtitle="Academia, plan de acción y seguimiento en un solo lugar."
           className="border-white/10 [&_h1]:text-hero-text [&_p]:text-hero-text/70"
         />
         <EmptyState
@@ -240,7 +250,7 @@ export function TeamProgressPage() {
           icon: Users,
         },
         {
-          label: 'Miembros en buen avance',
+          label: 'Buen avance',
           value: String(summary.membersInGoodProgress),
           detail: 'Estado Buen avance o Excelente',
           icon: Sparkles,
@@ -257,6 +267,24 @@ export function TeamProgressPage() {
           detail: 'Promedio entre Academia y Plan de Acción',
           icon: ClipboardList,
         },
+        {
+          label: 'Módulos de academia',
+          value: String(summary.totalMaterials),
+          detail: 'Materiales publicados para el equipo',
+          icon: BookOpen,
+        },
+        {
+          label: 'Sin revisar academia',
+          value: String(summary.membersNotReviewedModules),
+          detail: 'Miembros que aún no abrieron módulos',
+          icon: GraduationCap,
+        },
+        {
+          label: 'Promedio de tests',
+          value: summary.averageTeamScore !== null ? `${summary.averageTeamScore}/100` : '—',
+          detail: 'Promedio del equipo en evaluaciones',
+          icon: BarChart3,
+        },
       ]
     : []
 
@@ -264,7 +292,7 @@ export function TeamProgressPage() {
     <div className="space-y-6 px-4 py-6 sm:px-8 sm:py-8">
       <PageHeader
         title="Progreso de Equipo"
-        subtitle="Visualiza el avance global de tus miembros y detecta quién necesita acompañamiento."
+        subtitle="Academia, plan de acción y seguimiento en un solo lugar. Detecta quién necesita acompañamiento."
         className="border-white/10 [&_h1]:text-hero-text [&_p]:text-hero-text/70"
       />
 
@@ -281,7 +309,10 @@ export function TeamProgressPage() {
         </div>
       ) : summary ? (
         <>
-          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Indicadores">
+          <section
+            className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+            aria-label="Indicadores"
+          >
             {kpis.map((kpi) => (
               <KpiCard key={kpi.label} kpi={kpi} />
             ))}
@@ -446,6 +477,7 @@ export function TeamProgressPage() {
             taskProgress={selectedTaskProgress}
             memberReminders={selectedMemberReminders}
             testsById={testsById}
+            materialsById={materialsById}
             commercialSummary={selectedCommercialSummary}
             salesGoal={data?.salesGoal ?? null}
             salesReports={data?.salesReports ?? []}

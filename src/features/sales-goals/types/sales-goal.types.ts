@@ -4,6 +4,33 @@ export type SalesGoalPeriodType = 'weekly' | 'monthly'
 export type SalesGoalCurrency = 'EUR' | 'USD'
 export type SalesGoalStatus = 'active' | 'closed'
 export type SalesReportStatus = 'reported' | 'validated' | 'rejected'
+export type SalesGoalOutcome = 'achieved' | 'missed'
+
+export type TeamSalesGoalMemberBreakdown = {
+  memberUid: string
+  memberName: string
+  validatedAmount: number
+  reportedCount: number
+  validatedCount: number
+}
+
+export type TeamSalesGoalHistory = {
+  id: string
+  teamId: string
+  goalId: string
+  ownerUid: string
+  periodType: SalesGoalPeriodType
+  periodKey: string
+  periodLabel: string
+  currency: SalesGoalCurrency
+  targetAmount: number
+  finalAmount: number
+  outcome: SalesGoalOutcome
+  memberBreakdown: TeamSalesGoalMemberBreakdown[]
+  closedAt: Timestamp | null
+  createdAt: Timestamp | null
+  notifiedAt?: Timestamp | null
+}
 
 export type TeamSalesGoal = {
   id: string

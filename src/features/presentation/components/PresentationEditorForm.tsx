@@ -30,6 +30,7 @@ import {
   type PresentationTextColor,
 } from '@/features/presentation/types/presentation.types'
 import { getPublicPresentationPath } from '@/features/presentation/utils/slugUtils'
+import { COUNTRY_OPTIONS } from '@/features/settings/constants/countries'
 import { cn } from '@/lib/utils'
 
 type PresentationEditorFormProps = {
@@ -59,20 +60,20 @@ function ColorField({ label, value, onChange, disabled }: ColorFieldProps) {
   return (
     <div className="flex flex-col gap-2">
       <label className="text-sm font-medium text-text-dark">{label}</label>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3">
         <input
           type="color"
           value={value}
           onChange={(event) => onChange(event.target.value)}
           disabled={disabled}
-          className="h-10 w-14 cursor-pointer rounded-lg border border-petrol-dark/15 bg-white p-1 disabled:cursor-not-allowed disabled:opacity-50"
+          className="h-11 w-12 shrink-0 cursor-pointer rounded-lg border border-petrol-dark/15 bg-white p-1 disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-14"
           aria-label={label}
         />
         <Input
           value={value}
           onChange={(event) => onChange(event.target.value)}
           disabled={disabled}
-          className="font-mono text-sm uppercase"
+          className="min-w-0 flex-1 font-mono text-sm uppercase"
           aria-label={`${label} (hex)`}
         />
       </div>
@@ -175,7 +176,7 @@ export function PresentationEditorForm({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-4 sm:space-y-6">
       <PresentationWizardProgress
         steps={PRESENTATION_EDITOR_STEPS}
         currentStepIndex={currentStepIndex}
@@ -216,9 +217,9 @@ export function PresentationEditorForm({
             </span>
           </div>
 
-          <div className="flex flex-wrap gap-3">
-            <Link to={PRESENTATION_MODULE.previewRoute}>
-              <Button variant="outline" className="gap-2" disabled={publishing}>
+          <div className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap">
+            <Link to={PRESENTATION_MODULE.previewRoute} className="w-full sm:w-auto">
+              <Button variant="outline" className="w-full gap-2 sm:w-auto" disabled={publishing}>
                 <Eye className="h-4 w-4" aria-hidden="true" />
                 Vista previa
               </Button>
@@ -226,7 +227,7 @@ export function PresentationEditorForm({
             <Button
               type="button"
               variant="outline"
-              className="gap-2"
+              className="w-full gap-2 sm:w-auto"
               onClick={onCopyLink}
               disabled={!slug || isBusy || publishing}
             >
@@ -237,7 +238,7 @@ export function PresentationEditorForm({
               <Button
                 type="button"
                 variant="outline"
-                className="gap-2 border-red-400/40 text-red-700 hover:bg-red-50"
+                className="w-full gap-2 border-red-400/40 text-red-700 hover:bg-red-50 sm:w-auto"
                 onClick={onUnpublish}
                 disabled={isBusy || publishing}
               >
@@ -251,7 +252,7 @@ export function PresentationEditorForm({
             ) : (
               <Button
                 type="button"
-                className="gap-2"
+                className="w-full gap-2 sm:w-auto"
                 onClick={onPublish}
                 disabled={publishDisabled}
               >
@@ -1073,7 +1074,7 @@ export function PresentationEditorForm({
                   )
                 }
 
-                if (field.key === 'interest') {
+                if (field.key === 'interest' || field.key === 'country' || field.key === 'city') {
                   return (
                     <div key={field.key} className="flex flex-col gap-1.5">
                       <label className="text-sm font-medium text-text-dark">{field.label}</label>
@@ -1082,7 +1083,11 @@ export function PresentationEditorForm({
                         className="h-10 w-full rounded-lg border border-petrol-dark/15 bg-white px-3 text-sm text-text-soft"
                       >
                         <option>
-                          {interestPreviewOptions[0] ?? field.placeholder}
+                          {field.key === 'interest'
+                            ? (interestPreviewOptions[0] ?? field.placeholder)
+                            : field.key === 'country'
+                              ? `${COUNTRY_OPTIONS[0]?.flag ?? ''} ${COUNTRY_OPTIONS[0]?.name ?? field.placeholder}`
+                              : field.placeholder}
                         </option>
                       </select>
                     </div>
@@ -1109,80 +1114,98 @@ export function PresentationEditorForm({
       ) : null}
 
       <nav
-        className="sticky bottom-3 z-20 mt-2 rounded-2xl border border-gold/20 bg-gradient-to-br from-petrol-deep/95 via-[#0a2a30]/95 to-petrol-deep/95 p-3 shadow-[0_12px_40px_rgba(0,0,0,0.45)] backdrop-blur-xl sm:bottom-4 sm:p-4"
+        className={cn(
+          'sticky z-30 mt-4 rounded-[20px] border border-white/10',
+          'bottom-[calc(5.75rem+0.5rem+env(safe-area-inset-bottom,0px))] lg:bottom-4',
+          'bg-petrol-deep/92 p-2.5 shadow-[0_10px_32px_rgba(0,0,0,0.4)] backdrop-blur-xl sm:p-3',
+        )}
         aria-label="Navegación del editor por pasos"
       >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <Button
-              type="button"
-              disabled={isBusy || isFirstStep}
-              onClick={goToPreviousStep}
-              className="h-11 gap-2 border border-[#6AC5BC]/40 bg-[#6AC5BC] text-petrol-deep hover:bg-[#7fd0c8] hover:text-petrol-deep disabled:border-[#6AC5BC]/20 disabled:bg-[#6AC5BC]/40 disabled:text-petrol-deep/50"
-            >
-              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-              Anterior
-            </Button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={isBusy || isFirstStep}
+            onClick={goToPreviousStep}
+            className={cn(
+              'inline-flex h-10 shrink-0 items-center justify-center gap-1 rounded-full px-2.5',
+              'text-sm font-medium text-hero-text/70 transition-colors',
+              'hover:bg-white/8 hover:text-hero-text',
+              'disabled:cursor-not-allowed disabled:opacity-35',
+              'sm:px-3',
+            )}
+            aria-label="Paso anterior"
+          >
+            <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className="hidden sm:inline">Anterior</span>
+          </button>
 
-            <Link to={PRESENTATION_MODULE.previewRoute}>
-              <Button
-                type="button"
-                disabled={isBusy}
-                className="h-11 gap-2 border border-[#D9A441]/50 bg-[#D9A441] text-petrol-deep hover:bg-[#e0b055]"
-              >
-                <Eye className="h-4 w-4" aria-hidden="true" />
-                Vista previa
-              </Button>
-            </Link>
-          </div>
+          <p className="min-w-0 flex-1 truncate text-center text-[11px] font-medium tracking-wide text-hero-text/45 sm:text-xs">
+            {isLastStep
+              ? 'Último paso'
+              : `Paso ${currentStepIndex + 1} de ${PRESENTATION_EDITOR_STEP_COUNT}`}
+          </p>
 
-          <div className="flex flex-col items-center gap-2">
-            <p className="text-sm font-medium text-hero-text">
-              {isLastStep ? 'Último paso' : `Paso ${currentStepIndex + 1} de ${PRESENTATION_EDITOR_STEP_COUNT}`}
-            </p>
-            <div className="flex items-center gap-1.5" aria-hidden="true">
-              {PRESENTATION_EDITOR_STEPS.map((step, index) => (
-                <span
-                  key={step.id}
-                  className={
-                    index === currentStepIndex
-                      ? 'h-2 w-6 rounded-full bg-gold'
-                      : index < currentStepIndex
-                        ? 'h-2 w-2 rounded-full bg-teal-accent'
-                        : 'h-2 w-2 rounded-full bg-white/25'
-                  }
-                />
-              ))}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
-            <Button
-              type="button"
-              disabled={isBusy || !onSave}
-              onClick={() => onSave?.()}
-              className="h-11 gap-2 bg-gold text-petrol-deep hover:bg-gold-light"
-            >
-              {saving ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              ) : (
-                <Save className="h-4 w-4" aria-hidden="true" />
+          <Link
+            to={PRESENTATION_MODULE.previewRoute}
+            className="shrink-0"
+            aria-label="Vista previa"
+            aria-disabled={isBusy || undefined}
+            tabIndex={isBusy ? -1 : undefined}
+            onClick={(event) => {
+              if (isBusy) event.preventDefault()
+            }}
+          >
+            <span
+              className={cn(
+                'inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-white/15',
+                'px-2.5 text-sm font-medium text-hero-text/85 transition-colors sm:px-3',
+                'hover:border-teal-accent/40 hover:bg-white/5 hover:text-teal-accent',
+                isBusy && 'pointer-events-none opacity-50',
               )}
-              {saving ? 'Guardando...' : 'Guardar'}
-            </Button>
+            >
+              <Eye className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span className="hidden sm:inline">Vista previa</span>
+            </span>
+          </Link>
 
-            {!isLastStep ? (
-              <Button
-                type="button"
-                disabled={isBusy}
-                onClick={goToNextStep}
-                className="h-11 gap-2 bg-gold text-petrol-deep hover:bg-gold-light"
-              >
-                Siguiente
-                <ChevronRight className="h-4 w-4" aria-hidden="true" />
-              </Button>
-            ) : null}
-          </div>
+          <button
+            type="button"
+            disabled={isBusy || !onSave}
+            onClick={() => onSave?.()}
+            className={cn(
+              'inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-full text-sm font-medium transition-colors',
+              isLastStep
+                ? 'bg-gold px-3.5 text-petrol-deep hover:bg-gold-light disabled:opacity-40'
+                : 'border border-white/15 px-2.5 text-hero-text/85 hover:border-gold/40 hover:bg-white/5 hover:text-gold-light disabled:opacity-40 sm:px-3',
+            )}
+            aria-label={saving ? 'Guardando' : 'Guardar'}
+          >
+            {saving ? (
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />
+            ) : (
+              <Save className="h-4 w-4 shrink-0" aria-hidden="true" />
+            )}
+            <span className={cn(isLastStep ? 'inline' : 'hidden sm:inline')}>
+              {saving ? 'Guardando...' : 'Guardar'}
+            </span>
+          </button>
+
+          {!isLastStep ? (
+            <button
+              type="button"
+              disabled={isBusy}
+              onClick={goToNextStep}
+              className={cn(
+                'inline-flex h-10 shrink-0 items-center justify-center gap-1 rounded-full bg-gold px-3.5',
+                'text-sm font-semibold text-petrol-deep transition-colors hover:bg-gold-light',
+                'disabled:cursor-not-allowed disabled:opacity-40',
+                'sm:px-4',
+              )}
+            >
+              Siguiente
+              <ChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />
+            </button>
+          ) : null}
         </div>
       </nav>
     </div>

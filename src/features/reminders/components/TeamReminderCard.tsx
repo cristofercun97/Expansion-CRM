@@ -60,6 +60,14 @@ function ReminderItem({ reminder, marking, onMarkAsRead }: ReminderItemProps) {
               Revisar ventas en Plan de Acción
             </Link>
           ) : null}
+          {reminder.type === 'sales_goal_result' && reminder.relatedContext?.ctaPath ? (
+            <Link
+              to={reminder.relatedContext.ctaPath}
+              className="mt-3 inline-flex text-xs font-medium text-teal-accent hover:text-teal-accent/80"
+            >
+              Ver objetivo en Plan de Acción
+            </Link>
+          ) : null}
         </div>
       </div>
 

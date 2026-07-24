@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui'
 import { useToast } from '@/components/ui/toast/ToastProvider'
 import { useAuth } from '@/features/auth/hooks/useAuth'
@@ -15,6 +14,7 @@ import {
 import { SalesReportsReviewSection } from '@/features/sales-goals/components/SalesReportsReviewSection'
 import { SalesMemberCommercialReportSection } from '@/features/sales-goals/components/SalesMemberCommercialReportSection'
 import { MemberSalesSummaryCard } from '@/features/sales-goals/components/MemberSalesSummaryCard'
+import { SalesGoalHistorySection } from '@/features/sales-goals/components/SalesGoalHistorySection'
 import { TeamSalesProgressModal } from '@/features/sales-goals/components/TeamSalesProgressModal'
 import { useTeamSalesGoal, useTeamSalesGoalActions } from '@/features/sales-goals/hooks/useTeamSalesGoal'
 import { salesGoalService } from '@/features/sales-goals/services/sales-goal.service'
@@ -37,7 +37,6 @@ export function SalesGoalCard({
   contextQuery,
   className,
 }: SalesGoalCardProps) {
-  const navigate = useNavigate()
   const { showToast } = useToast()
   const { currentUser, appUser } = useAuth()
   const authUid = currentUser?.uid ?? null
@@ -76,10 +75,21 @@ export function SalesGoalCard({
     ],
   )
 
-  const { goal, reports, pendingReports, progress, loading, error, reload } = useTeamSalesGoal({
+  const {
+    goal,
+    reports,
+    pendingReports,
+    history,
+    progress,
+    loading,
+    historyLoading,
+    error,
+    reload,
+  } = useTeamSalesGoal({
     teamId,
     viewerUid,
     isLeader,
+    leaderDisplayName: memberName,
     loadDebugContext,
   })
   const { saving, wrapAction } = useTeamSalesGoalActions(reload)
@@ -98,15 +108,6 @@ export function SalesGoalCard({
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [showReports, setShowReports] = useState(false)
   const [processingReportId, setProcessingReportId] = useState<string | null>(null)
-
-  const planLink = useMemo(() => {
-    const params = new URLSearchParams()
-    if (contextQuery) {
-      params.set('context', contextQuery)
-    }
-    const query = params.toString()
-    return query ? `/dashboard/plan?${query}` : '/dashboard/plan'
-  }, [contextQuery])
 
   async function handleSaveGoal(input: {
     periodType: 'weekly' | 'monthly'
@@ -235,9 +236,9 @@ export function SalesGoalCard({
 
   return (
     <article
-      id="sales-progress"
+      id="plan-ventas"
       className={cn(
-        'rounded-2xl border border-gold/20 bg-gradient-to-br from-gold/8 via-white/8 to-teal-accent/5 p-5 backdrop-blur-xl sm:p-6',
+        'scroll-mt-28 rounded-2xl border border-gold/20 bg-gradient-to-br from-gold/8 via-white/8 to-teal-accent/5 p-5 backdrop-blur-xl sm:p-6',
         className,
       )}
     >
@@ -253,12 +254,14 @@ export function SalesGoalCard({
           {error}
         </p>
       ) : !goal || !progress ? (
-        <div className="mt-4">
+        <div className="mt-4 space-y-5">
           <SalesGoalEmptyState
             isLeader={isLeader}
             onConfigure={isLeader ? () => setGoalModalOpen(true) : undefined}
-            onGoToPlan={!isLeader ? () => navigate(planLink) : undefined}
           />
+          {isLeader || history.length > 0 ? (
+            <SalesGoalHistorySection history={history} loading={historyLoading} />
+          ) : null}
         </div>
       ) : (
         <div className="mt-5 space-y-5">
@@ -341,6 +344,10 @@ export function SalesGoalCard({
               disableReport={goal.status !== 'active'}
               onReportSale={() => setReportModalOpen(true)}
             />
+          ) : null}
+
+          {isLeader || history.length > 0 ? (
+            <SalesGoalHistorySection history={history} loading={historyLoading} />
           ) : null}
         </div>
       )}

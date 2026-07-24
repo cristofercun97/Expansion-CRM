@@ -1,8 +1,8 @@
-import { Loader2, Sparkles } from 'lucide-react'
-import { Button } from '@/components/ui'
+import { Sparkles } from 'lucide-react'
 import { useToast } from '@/components/ui/toast/ToastProvider'
+import { ActivationRequestForm } from '@/features/group-activation/components/ActivationRequestForm'
 import { useGroupActivation } from '@/features/group-activation/hooks/useGroupActivation'
-import { formatExpansionAnnualPriceLabel } from '@/features/referrals/constants/referralProgram.constants'
+import type { RequestGroupActivationInput } from '@/features/group-activation/types/group-activation.types'
 import { cn } from '@/lib/utils'
 
 type TeamActivationCardProps = {
@@ -17,14 +17,15 @@ export function TeamActivationCard({ className }: TeamActivationCardProps) {
   const { showToast } = useToast()
   const { activationStatus, requestActivation, submitting } = useGroupActivation()
 
-  async function handleRequestActivation() {
+  async function handleRequestActivation(input: RequestGroupActivationInput) {
     try {
-      await requestActivation()
+      await requestActivation(input)
       showToast('Solicitud enviada. El equipo revisará tu activación.', 'success')
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'No pudimos enviar tu solicitud. Inténtalo de nuevo.'
       showToast(message, 'info')
+      throw error
     }
   }
 
@@ -68,40 +69,6 @@ export function TeamActivationCard({ className }: TeamActivationCardProps) {
     )
   }
 
-  if (activationStatus === 'rejected') {
-    return (
-      <section
-        className={cn(
-          'rounded-2xl border border-white/15 bg-white/5 p-5 backdrop-blur-xl sm:p-6',
-          className,
-        )}
-      >
-        <h3 className="text-base font-semibold text-hero-text">Activación de grupo</h3>
-        <p className="mt-2 text-sm leading-relaxed text-hero-text/75">
-          Tu solicitud fue rechazada. Puedes contactar con soporte o volver a solicitar.
-        </p>
-        <p className="mt-3 text-sm font-semibold text-gold-light">{formatExpansionAnnualPriceLabel()}</p>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={submitting}
-          onClick={handleRequestActivation}
-          className="mt-4 border-white/20 bg-white/5 text-hero-text hover:bg-white/10"
-        >
-          {submitting ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
-              Enviando solicitud...
-            </>
-          ) : (
-            'Solicitar activación'
-          )}
-        </Button>
-      </section>
-    )
-  }
-
   return (
     <section
       className={cn(
@@ -114,24 +81,15 @@ export function TeamActivationCard({ className }: TeamActivationCardProps) {
         Para crear tu propia organización, activar tus módulos completos y tener tu propio enlace
         de invitación, debes solicitar la Activación de grupo.
       </p>
-      <p className="mt-3 text-sm font-semibold text-gold-light">{formatExpansionAnnualPriceLabel()}</p>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={submitting}
-        onClick={handleRequestActivation}
-        className="mt-4 border-white/20 bg-white/5 text-hero-text hover:bg-white/10"
-      >
-        {submitting ? (
-          <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
-            Enviando solicitud...
-          </>
-        ) : (
-          'Solicitar activación'
-        )}
-      </Button>
+
+      <ActivationRequestForm
+        className="mt-5"
+        submitting={submitting}
+        submitLabel={
+          activationStatus === 'rejected' ? 'Solicitar activación' : 'Enviar solicitud de activación'
+        }
+        onSubmit={handleRequestActivation}
+      />
     </section>
   )
 }

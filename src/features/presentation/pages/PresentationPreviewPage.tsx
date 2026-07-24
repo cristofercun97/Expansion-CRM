@@ -81,23 +81,26 @@ export function PresentationPreviewPage() {
 
   return (
     <div className="min-h-screen bg-hero-bg">
-      <div className="sticky top-0 z-50 border-b border-white/10 bg-petrol-deep/95 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-2 text-sm text-hero-text/80">
-            <Eye className="h-4 w-4 text-teal-accent" aria-hidden="true" />
-            <span className="font-medium">
-              {isPublished ? 'Vista previa interna' : 'Vista previa interna — No publicada'}
+      <div className="sticky top-[calc(4rem+env(safe-area-inset-top,0px))] z-30 border-b border-white/10 bg-petrol-deep/95 backdrop-blur-md lg:top-0 lg:z-50">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-2 px-4 py-3 sm:gap-3 sm:px-6">
+          <div className="flex min-w-0 items-center gap-2 text-sm text-hero-text/80">
+            <Eye className="h-4 w-4 shrink-0 text-teal-accent" aria-hidden="true" />
+            <span className="truncate font-medium">
+              <span className="sm:hidden">{isPublished ? 'Vista previa' : 'Borrador'}</span>
+              <span className="hidden sm:inline">
+                {isPublished ? 'Vista previa interna' : 'Vista previa interna — No publicada'}
+              </span>
             </span>
           </div>
 
-          <Link to={PRESENTATION_MODULE.route}>
+          <Link to={PRESENTATION_MODULE.route} className="shrink-0">
             <Button
               variant="outline"
-              size="sm"
-              className="gap-2 border-white/20 bg-transparent text-hero-text hover:bg-white/10"
+              className="min-h-10 gap-2 border-white/20 bg-transparent px-3 text-hero-text hover:bg-white/10"
             >
               <Edit3 className="h-4 w-4" aria-hidden="true" />
-              Volver a editar
+              <span className="sm:hidden">Editar</span>
+              <span className="hidden sm:inline">Volver a editar</span>
             </Button>
           </Link>
         </div>

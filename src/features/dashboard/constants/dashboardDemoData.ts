@@ -1,6 +1,5 @@
 import {
   Award,
-  BarChart3,
   BookOpen,
   ClipboardList,
   Gift,
@@ -43,7 +42,6 @@ export const dashboardNavItems: DashboardNavItem[] = [
   { label: 'Radar de Interés', to: '/dashboard/radar', icon: Radar, ownerOnly: true },
   { label: 'Contactos', to: '/dashboard/contactos', icon: Users, ownerOnly: true },
   { label: 'Academia', to: '/dashboard/academia', icon: BookOpen },
-  { label: 'Progreso Academia', to: '/dashboard/progreso-academia', icon: BarChart3, activationOnly: true },
   { label: 'Progreso de Equipo', to: '/dashboard/progreso-equipo', icon: UsersRound, activationOnly: true },
   { label: 'Plan de Acción', to: '/dashboard/plan', icon: ClipboardList },
   { label: 'Reconocimientos', to: '/dashboard/reconocimientos', icon: Award },

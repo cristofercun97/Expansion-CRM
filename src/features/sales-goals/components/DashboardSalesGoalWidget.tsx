@@ -78,6 +78,7 @@ export function DashboardSalesGoalWidget({ className }: DashboardSalesGoalWidget
     viewerUid,
     isLeader,
     enabled: Boolean(teamId),
+    leaderDisplayName: memberName,
     loadDebugContext,
   })
   const { saving, wrapAction } = useTeamSalesGoalActions(reload)

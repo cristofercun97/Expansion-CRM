@@ -147,7 +147,29 @@ export function TeamActionMapReviewSection({
   const historyReviews = reviews.slice(1, HISTORY_LIMIT)
 
   if (!canEdit && !loading && reviews.length === 0) {
-    return null
+    return (
+      <section
+        id="team-action-map-review"
+        className={cn(
+          'mt-5 rounded-2xl border border-dashed border-white/15 bg-white/5 p-4 backdrop-blur-xl sm:p-5',
+          className,
+        )}
+        aria-label="Revisión semanal"
+      >
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-teal-accent/25 bg-teal-accent/10">
+            <ClipboardCheck className="h-5 w-5 text-teal-accent" aria-hidden="true" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-hero-text">Revisión semanal</h3>
+            <p className="mt-1 text-sm leading-relaxed text-hero-text/70">
+              Tu líder aún no ha publicado la revisión de esta semana. Cuando lo haga, verás aquí
+              qué avanzó el grupo y el próximo ajuste.
+            </p>
+          </div>
+        </div>
+      </section>
+    )
   }
 
   async function handleCreateReview(input: CreateTeamActionMapReviewInput) {

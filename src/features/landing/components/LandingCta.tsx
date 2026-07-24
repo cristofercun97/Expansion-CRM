@@ -31,7 +31,7 @@ export function LandingCta() {
             <Button
               size="lg"
               variant="outline"
-              className="w-full border-white/20 bg-transparent text-hero-text hover:border-teal-accent hover:bg-teal-accent/10 sm:w-auto"
+              className="w-full border-white/20 bg-transparent text-hero-text hover:border-[#6EC7BE] hover:bg-[#6EC7BE]/10 hover:text-[#6EC7BE] sm:w-auto"
             >
               Hablar con el equipo
             </Button>

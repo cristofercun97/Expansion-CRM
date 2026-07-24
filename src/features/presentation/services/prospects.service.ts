@@ -20,6 +20,18 @@ function buildPresentationProspectDocument(data: CreatePresentationProspectInput
     document.whatsapp = data.whatsapp.trim()
   }
 
+  if (data.countryCode !== undefined) {
+    document.countryCode = data.countryCode.trim().toUpperCase()
+  }
+
+  if (data.countryName !== undefined) {
+    document.countryName = data.countryName.trim()
+  }
+
+  if (data.city !== undefined) {
+    document.city = data.city.trim()
+  }
+
   if (data.interest !== undefined) {
     document.interest = data.interest.trim()
   }

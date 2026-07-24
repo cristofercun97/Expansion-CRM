@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+Allow: /registro
+Allow: /login
+Allow: /p/
+
+Disallow: /dashboard
+Disallow: /leader
+Disallow: /admin
+Disallow: /verificar-email
+Disallow: /recuperar-contrasena
+
+Sitemap: https://expansion-proyect.web.app/sitemap.xml

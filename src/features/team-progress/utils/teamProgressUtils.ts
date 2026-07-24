@@ -554,11 +554,27 @@ export function buildTeamProgressSummary(
     return left.memberName.localeCompare(right.memberName, 'es')
   })
 
+  const membersNotReviewedModules = memberRows.filter(
+    (member) => member.totalMaterials > 0 && member.reviewedMaterialsCount === 0,
+  ).length
+
+  const scoredMembers = memberRows.filter((member) => member.averageScore !== null)
+  const averageTeamScore =
+    scoredMembers.length > 0
+      ? Math.round(
+          scoredMembers.reduce((sum, member) => sum + (member.averageScore ?? 0), 0) /
+            scoredMembers.length,
+        )
+      : null
+
   return {
     totalMembers: memberRows.length,
     membersInGoodProgress,
     needsFollowUp,
     generalCompliancePercent,
+    totalMaterials,
+    membersNotReviewedModules,
+    averageTeamScore,
     members: sortedMembers,
   }
 }
@@ -607,6 +623,7 @@ export function buildMemberModuleProgressItems(
         materialId: material.id,
         title: material.title,
         reviewed: Boolean(engagement),
+        openCount: engagement?.openCount ?? 0,
         lastOpenedAt: engagement?.lastOpenedAt ?? null,
       }
     })

@@ -162,6 +162,8 @@ function mapFormConfig(data: DocumentData): PresentationFormState['formConfig'] 
   return {
     nameEnabled: source.nameEnabled ?? legacyPreview.nameEnabled ?? defaults.nameEnabled,
     whatsappEnabled: source.whatsappEnabled ?? legacyPreview.whatsappEnabled ?? defaults.whatsappEnabled,
+    countryEnabled: source.countryEnabled ?? legacyPreview.countryEnabled ?? defaults.countryEnabled,
+    cityEnabled: source.cityEnabled ?? legacyPreview.cityEnabled ?? defaults.cityEnabled,
     interestEnabled: source.interestEnabled ?? legacyPreview.interestEnabled ?? defaults.interestEnabled,
     messageEnabled: source.messageEnabled ?? legacyPreview.messageEnabled ?? defaults.messageEnabled,
     formTitle: str(source.formTitle, defaults.formTitle),
@@ -235,6 +237,8 @@ export function mapFormToFirestorePayload(
   const formPreview = {
     nameEnabled: form.formConfig.nameEnabled,
     whatsappEnabled: form.formConfig.whatsappEnabled,
+    countryEnabled: form.formConfig.countryEnabled,
+    cityEnabled: form.formConfig.cityEnabled,
     interestEnabled: form.formConfig.interestEnabled,
     messageEnabled: form.formConfig.messageEnabled,
   }

@@ -9,6 +9,10 @@ export const REMINDER_TYPE_OPTIONS: { value: TeamReminderType; label: string }[]
 ]
 
 export function getTeamReminderTypeLabel(type: TeamReminderType): string {
+  if (type === 'sales_goal_result') {
+    return 'Resultado de objetivo'
+  }
+
   return REMINDER_TYPE_OPTIONS.find((option) => option.value === type)?.label ?? type
 }
 

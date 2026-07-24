@@ -2,7 +2,6 @@ import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { RootLayout } from '@/components/layout/RootLayout'
 import { OwnerModuleRoute } from '@/app/router/OwnerModuleRoute'
-import { AcademyProgressRoute } from '@/app/router/AcademyProgressRoute'
 import { ProtectedRoute } from '@/app/router/ProtectedRoute'
 import { RoleProtectedRoute } from '@/app/router/RoleProtectedRoute'
 
@@ -152,18 +151,7 @@ export const router = createBrowserRouter([
       },
       {
         path: 'dashboard/progreso-academia',
-        lazy: async () => {
-          const { AcademyProgressPage } = await import(
-            '@/features/academy/pages/AcademyProgressPage'
-          )
-          return {
-            Component: () => (
-              <AcademyProgressRoute>
-                <AcademyProgressPage />
-              </AcademyProgressRoute>
-            ),
-          }
-        },
+        element: <Navigate to="/dashboard/progreso-equipo" replace />,
       },
       {
         path: 'dashboard/progreso-equipo',

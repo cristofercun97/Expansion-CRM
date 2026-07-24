@@ -1,9 +1,12 @@
 import type {
   SalesGoalCurrency,
+  SalesGoalOutcome,
   SalesGoalPeriodType,
   TeamSalesGoal,
+  TeamSalesGoalMemberBreakdown,
   TeamSalesReport,
 } from '@/features/sales-goals/types/sales-goal.types'
+import type { TeamMember } from '@/features/team/types/team.types'
 import type { AppUser } from '@/types'
 import { resolveLeaderTeamId } from '@/features/team/utils/teamContextUtils'
 
@@ -93,6 +96,43 @@ export function buildSalesPeriodKey(
   }
 }
 
+/** Fecha de referencia dentro del periodo anterior (mes o semana). */
+export function getPreviousSalesPeriodDate(
+  periodType: SalesGoalPeriodType,
+  referenceDate = new Date(),
+): Date {
+  if (periodType === 'monthly') {
+    return new Date(referenceDate.getFullYear(), referenceDate.getMonth() - 1, 15)
+  }
+
+  const currentWeek = getCurrentWeeklySalesPeriod(referenceDate)
+  const previousWeekDate = startOfDay(new Date(`${currentWeek.weekStartIso}T12:00:00`))
+  previousWeekDate.setDate(previousWeekDate.getDate() - 7)
+  return previousWeekDate
+}
+
+export function getSalesPeriodBounds(
+  periodType: SalesGoalPeriodType,
+  referenceDate = new Date(),
+): { startMs: number; endMs: number; periodKey: string; periodLabel: string } {
+  const { periodKey, periodLabel } = buildSalesPeriodKey(periodType, referenceDate)
+
+  if (periodType === 'monthly') {
+    const start = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), 1)
+    start.setHours(0, 0, 0, 0)
+    const end = new Date(referenceDate.getFullYear(), referenceDate.getMonth() + 1, 0)
+    end.setHours(23, 59, 59, 999)
+
+    return { startMs: start.getTime(), endMs: end.getTime(), periodKey, periodLabel }
+  }
+
+  const week = getCurrentWeeklySalesPeriod(referenceDate)
+  const start = startOfDay(new Date(`${week.weekStartIso}T12:00:00`))
+  const end = endOfDay(new Date(`${week.weekEndIso}T12:00:00`))
+
+  return { startMs: start.getTime(), endMs: end.getTime(), periodKey, periodLabel }
+}
+
 export function buildSalesGoalDocId(teamId: string, periodKey: string): string {
   return `${teamId.trim()}_${periodKey.trim()}`
 }
@@ -148,6 +188,121 @@ export function isGoalForCurrentPeriod(goal: TeamSalesGoal, referenceDate = new 
   return goal.periodKey === currentKey
 }
 
+export function resolveSalesGoalOutcome(
+  finalAmount: number,
+  targetAmount: number,
+): SalesGoalOutcome {
+  return finalAmount >= Math.max(targetAmount, 0) ? 'achieved' : 'missed'
+}
+
+export function buildSalesGoalMemberBreakdown(
+  reports: TeamSalesReport[],
+  members: Array<Pick<TeamMember, 'memberUid' | 'memberName' | 'memberEmail' | 'role'>> = [],
+): TeamSalesGoalMemberBreakdown[] {
+  const byMember = new Map<string, TeamSalesGoalMemberBreakdown>()
+
+  for (const member of members) {
+    const memberUid = member.memberUid.trim()
+
+    if (!memberUid || member.role === 'owner') {
+      continue
+    }
+
+    const fallbackName =
+      member.memberName?.trim() ||
+      member.memberEmail?.split('@')[0]?.trim() ||
+      'Miembro del equipo'
+
+    byMember.set(memberUid, {
+      memberUid,
+      memberName: fallbackName,
+      validatedAmount: 0,
+      reportedCount: 0,
+      validatedCount: 0,
+    })
+  }
+
+  for (const report of reports) {
+    const memberUid = report.memberUid.trim()
+
+    if (!memberUid) {
+      continue
+    }
+
+    const existing = byMember.get(memberUid) ?? {
+      memberUid,
+      memberName: report.memberName.trim() || 'Miembro del equipo',
+      validatedAmount: 0,
+      reportedCount: 0,
+      validatedCount: 0,
+    }
+
+    if (report.memberName.trim()) {
+      existing.memberName = report.memberName.trim()
+    }
+
+    existing.reportedCount += 1
+
+    if (report.status === 'validated') {
+      existing.validatedCount += 1
+      existing.validatedAmount += report.amount
+    }
+
+    byMember.set(memberUid, existing)
+  }
+
+  return [...byMember.values()].sort((left, right) => {
+    if (right.validatedAmount !== left.validatedAmount) {
+      return right.validatedAmount - left.validatedAmount
+    }
+
+    return left.memberName.localeCompare(right.memberName, 'es')
+  })
+}
+
+export function buildSalesGoalPeriodResultMessage(input: {
+  periodLabel: string
+  periodType: SalesGoalPeriodType
+  outcome: SalesGoalOutcome
+  targetAmount: number
+  finalAmount: number
+  currency: SalesGoalCurrency
+  memberBreakdown: TeamSalesGoalMemberBreakdown[]
+}): string {
+  const periodKind = input.periodType === 'monthly' ? 'mensual' : 'semanal'
+  const outcomeLabel =
+    input.outcome === 'achieved' ? 'Objetivo cumplido' : 'Objetivo no cumplido'
+  const targetLabel = formatSalesCurrency(input.targetAmount, input.currency)
+  const finalLabel = formatSalesCurrency(input.finalAmount, input.currency)
+
+  const lines = [
+    `Periodo ${periodKind}: ${input.periodLabel}`,
+    `Resultado: ${outcomeLabel}`,
+    `Meta: ${targetLabel} · Alcanzado: ${finalLabel}`,
+    '',
+    'Detalle por vendedor:',
+  ]
+
+  if (input.memberBreakdown.length === 0) {
+    lines.push('• Sin ventas validadas en el periodo.')
+  } else {
+    for (const member of input.memberBreakdown) {
+      const amountLabel = formatSalesCurrency(member.validatedAmount, input.currency)
+      lines.push(
+        `• ${member.memberName}: ${amountLabel} (${member.validatedCount} validada${member.validatedCount === 1 ? '' : 's'})`,
+      )
+    }
+  }
+
+  const message = lines.join('\n')
+
+  if (message.length <= 2000) {
+    return message
+  }
+
+  return `${message.slice(0, 1997)}...`
+}
+
 export const SALES_GOAL_COPY = {
   title: 'Objetivo de ventas',
   description:
@@ -168,7 +323,9 @@ export const SALES_GOAL_COPY = {
   rejectSuccess: 'Venta rechazada.',
   leaderEmpty: 'Configura un objetivo de ventas para enfocar al equipo.',
   memberEmpty:
-    'Tu líder aún no ha configurado un objetivo de ventas para este periodo.',
+    'Tu líder aún no ha configurado la meta de ventas de este periodo. Mientras tanto, sigue avanzando en tus tareas del plan.',
+  waitingForLeaderGoal:
+    'Cuando tu líder publique la meta, aparecerá aquí para que reportes ventas.',
   dashboardLeaderCta: 'Ver objetivo',
   dashboardMemberCta: 'Reportar venta',
   pendingSalesBadge: (count: number) =>
@@ -195,13 +352,25 @@ export const SALES_GOAL_COPY = {
   dashboardMembersWithSales: (count: number) =>
     `${count} miembro${count === 1 ? '' : 's'} con ventas reportadas`,
   dashboardMemberValidatedProgress: (amount: string) => `Tu avance validado: ${amount}`,
-  goToPlan: 'Ver Plan de Acción',
+  goToPlan: 'Ir a Plan de Acción',
   modalConfigureTitle: 'Configurar objetivo de ventas',
   modalAdjustTitle: 'Ajustar objetivo de ventas',
   modalDescription:
     'Define la meta comercial del periodo. El equipo verá el avance con las ventas validadas.',
   modalPeriodHint: 'El objetivo aplica al periodo actual seleccionado.',
   modalPeriodAppliesTo: (label: string) => `Aplica a: ${label}`,
+  historyTitle: 'Historial de objetivos',
+  historyEmpty:
+    'No hay datos del mes pasado en este grupo (ni objetivo, ni ventas validadas, ni snapshots de reconocimientos). A partir de ahora, al cerrar cada periodo sí quedará el detalle por vendedor.',
+  historyAchieved: 'Cumplido',
+  historyMissed: 'No cumplido',
+  historyNoOfficialGoal: 'Sin meta oficial',
+  historyViewSellers: 'Ver vendedores',
+  historyHideSellers: 'Ocultar vendedores',
+  historyPreviousMonth: 'Resultado del mes pasado',
+  historyDetailButton: 'Ver detalle',
+  historyDetailTitle: 'Detalle del periodo',
+  historyDetailSellersTitle: 'Detalle por vendedor',
 } as const
 
 export function resolveDashboardSalesTeamContext(appUser: AppUser | null | undefined): {

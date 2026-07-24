@@ -81,6 +81,11 @@ export function SalesGoalEmptyState({
       <p className="text-sm leading-relaxed text-hero-text/70">
         {isLeader ? SALES_GOAL_COPY.leaderEmpty : SALES_GOAL_COPY.memberEmpty}
       </p>
+      {!isLeader ? (
+        <p className="mt-2 text-xs leading-relaxed text-hero-text/55">
+          {SALES_GOAL_COPY.waitingForLeaderGoal}
+        </p>
+      ) : null}
       {isLeader && onConfigure ? (
         <Button
           type="button"

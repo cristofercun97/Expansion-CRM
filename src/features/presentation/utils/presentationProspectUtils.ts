@@ -5,6 +5,8 @@ import type {
   PresentationProspectFormErrors,
   PresentationProspectFormValues,
 } from '@/features/presentation/types/prospect.types'
+import { findCountryByCode } from '@/features/settings/constants/countries'
+import { getCitiesForCountry } from '@/features/settings/constants/citiesByCountry'
 
 const MESSAGE_MAX_LENGTH = 500
 
@@ -25,6 +27,8 @@ export function hasEnabledPresentationFormFields(formConfig: PresentationFormCon
   return (
     formConfig.nameEnabled ||
     formConfig.whatsappEnabled ||
+    formConfig.countryEnabled ||
+    formConfig.cityEnabled ||
     formConfig.interestEnabled ||
     formConfig.messageEnabled
   )
@@ -37,6 +41,8 @@ export function validatePresentationProspectForm(
   const errors: PresentationProspectFormErrors = {}
   const name = values.name.trim()
   const whatsapp = values.whatsapp.trim()
+  const countryCode = values.countryCode.trim().toUpperCase()
+  const city = values.city.trim()
   const interest = values.interest.trim()
   const message = values.message.trim()
 
@@ -57,6 +63,23 @@ export function validatePresentationProspectForm(
     }
   }
 
+  if (formConfig.countryEnabled) {
+    if (!countryCode || !findCountryByCode(countryCode)) {
+      errors.countryCode = 'Selecciona un país.'
+    }
+  }
+
+  if (formConfig.cityEnabled) {
+    if (!city) {
+      errors.city = 'Selecciona una ciudad.'
+    } else if (countryCode) {
+      const cities = getCitiesForCountry(countryCode)
+      if (cities.length > 0 && !cities.includes(city)) {
+        errors.city = 'Selecciona una ciudad válida para el país elegido.'
+      }
+    }
+  }
+
   if (formConfig.interestEnabled) {
     if (!interest) {
       errors.interest = 'Selecciona una opción de interés.'
@@ -70,6 +93,8 @@ export function validatePresentationProspectForm(
   const hasAnyValue =
     (formConfig.nameEnabled && name.length > 0) ||
     (formConfig.whatsappEnabled && whatsapp.length > 0) ||
+    (formConfig.countryEnabled && countryCode.length > 0) ||
+    (formConfig.cityEnabled && city.length > 0) ||
     (formConfig.interestEnabled && interest.length > 0) ||
     (formConfig.messageEnabled && message.length > 0)
 
@@ -97,6 +122,19 @@ export function buildPresentationProspectPayload(
 
   if (formConfig.whatsappEnabled) {
     payload.whatsapp = values.whatsapp.trim()
+  }
+
+  if (formConfig.countryEnabled) {
+    const countryCode = values.countryCode.trim().toUpperCase()
+    const country = findCountryByCode(countryCode)
+    if (country) {
+      payload.countryCode = country.code
+      payload.countryName = country.name
+    }
+  }
+
+  if (formConfig.cityEnabled) {
+    payload.city = values.city.trim()
   }
 
   if (formConfig.interestEnabled) {

@@ -12,9 +12,16 @@ import {
 } from 'firebase/firestore'
 import {
   GROUP_ACTIVATION_AMOUNT,
+  GROUP_ACTIVATION_CRYPTO_CURRENCY,
+  GROUP_ACTIVATION_CRYPTO_NETWORK,
   GROUP_ACTIVATION_CURRENCY,
+  GROUP_ACTIVATION_USDT_ADDRESS,
 } from '@/features/group-activation/constants/groupActivation.constants'
-import type { GroupActivationRequest } from '@/features/group-activation/types/group-activation.types'
+import type {
+  GroupActivationRequest,
+  RequestGroupActivationInput,
+} from '@/features/group-activation/types/group-activation.types'
+import { uploadActivationProof } from '@/features/group-activation/services/activation-proof.service'
 import { referralRewardsService } from '@/features/referrals/services/referral-rewards.service'
 import { referralUplineService } from '@/features/referrals/services/referral-upline.service'
 import { teamService } from '@/features/team/services/team.service'
@@ -55,6 +62,11 @@ function resolveRequesterName(appUser: AppUser): string {
 }
 
 function mapGroupActivationRequest(id: string, data: DocumentData): GroupActivationRequest {
+  const paymentMethod =
+    data.paymentMethod === 'paypal' || data.paymentMethod === 'usdt_trc20'
+      ? data.paymentMethod
+      : null
+
   return {
     id,
     requesterUid: typeof data.requesterUid === 'string' ? data.requesterUid : '',
@@ -64,6 +76,14 @@ function mapGroupActivationRequest(id: string, data: DocumentData): GroupActivat
     amount: typeof data.amount === 'number' ? data.amount : GROUP_ACTIVATION_AMOUNT,
     currency: typeof data.currency === 'string' ? data.currency : GROUP_ACTIVATION_CURRENCY,
     status: data.status === 'approved' || data.status === 'rejected' ? data.status : 'pending',
+    paymentMethod,
+    paymentReference: typeof data.paymentReference === 'string' ? data.paymentReference : '',
+    proofUrl: typeof data.proofUrl === 'string' ? data.proofUrl : '',
+    proofFileName: typeof data.proofFileName === 'string' ? data.proofFileName : '',
+    proofContentType: typeof data.proofContentType === 'string' ? data.proofContentType : '',
+    cryptoCurrency: typeof data.cryptoCurrency === 'string' ? data.cryptoCurrency : null,
+    cryptoNetwork: typeof data.cryptoNetwork === 'string' ? data.cryptoNetwork : null,
+    cryptoAddress: typeof data.cryptoAddress === 'string' ? data.cryptoAddress : null,
     requestedAt: data.requestedAt ?? null,
     reviewedAt: data.reviewedAt ?? null,
     reviewedBy: typeof data.reviewedBy === 'string' ? data.reviewedBy : '',
@@ -122,7 +142,10 @@ async function listPendingActivationRequests(): Promise<GroupActivationRequest[]
     })
 }
 
-async function requestGroupActivation(appUser: AppUser): Promise<void> {
+async function requestGroupActivation(
+  appUser: AppUser,
+  input: RequestGroupActivationInput,
+): Promise<void> {
   if (appUser.activationStatus === 'active') {
     throw new Error('Tu grupo ya está activado.')
   }
@@ -135,6 +158,21 @@ async function requestGroupActivation(appUser: AppUser): Promise<void> {
 
   if (existingPendingRequest) {
     throw new Error('Ya tienes una solicitud en revisión.')
+  }
+
+  const paymentMethod = input.paymentMethod
+  const paymentReference = input.paymentReference.trim()
+
+  if (paymentMethod !== 'paypal' && paymentMethod !== 'usdt_trc20') {
+    throw new Error('Selecciona un método de pago válido.')
+  }
+
+  if (paymentMethod === 'usdt_trc20' && paymentReference.length === 0) {
+    throw new Error('Introduce el hash (TXID) de la transferencia USDT.')
+  }
+
+  if (!input.proofFile) {
+    throw new Error('Adjunta el comprobante de pago.')
   }
 
   const requesterName = resolveRequesterName(appUser)
@@ -154,13 +192,14 @@ async function requestGroupActivation(appUser: AppUser): Promise<void> {
     }
   }
 
+  const proof = await uploadActivationProof(appUser.uid, input.proofFile)
   const db = getFirebaseDb()
   const batch = writeBatch(db)
   const requestRef = doc(collection(db, COLLECTIONS.groupActivationRequests))
   const now = serverTimestamp()
 
-  // ⚠️ CRÍTICO: payload debe coincidir EXACTAMENTE con isValidGroupActivationRequestCreate en firestore.rules
-  batch.set(requestRef, {
+  // ⚠️ CRÍTICO: payload debe coincidir EXACTAMENTE con isValidGroupActivationRequestCreate
+  const payload: Record<string, unknown> = {
     requesterUid: appUser.uid,
     requesterEmail: appUser.email,
     requesterName,
@@ -169,7 +208,20 @@ async function requestGroupActivation(appUser: AppUser): Promise<void> {
     currency: GROUP_ACTIVATION_CURRENCY,
     status: 'pending',
     requestedAt: now,
-  })
+    paymentMethod,
+    paymentReference,
+    proofUrl: proof.proofUrl,
+    proofFileName: proof.proofFileName,
+    proofContentType: proof.proofContentType,
+  }
+
+  if (paymentMethod === 'usdt_trc20') {
+    payload.cryptoCurrency = GROUP_ACTIVATION_CRYPTO_CURRENCY
+    payload.cryptoNetwork = GROUP_ACTIVATION_CRYPTO_NETWORK
+    payload.cryptoAddress = GROUP_ACTIVATION_USDT_ADDRESS
+  }
+
+  batch.set(requestRef, payload)
 
   // ⚠️ CRÍTICO: batch atómico — si falla users.update, tampoco se crea la solicitud
   batch.update(doc(db, COLLECTIONS.users, appUser.uid), {
