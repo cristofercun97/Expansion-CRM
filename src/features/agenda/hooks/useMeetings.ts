@@ -31,7 +31,7 @@ function resolveMeetingsLoadError(loadError: unknown): string {
   return 'No pudimos cargar tus reuniones.'
 }
 
-export function useMeetings() {
+export function useMeetings(range?: { rangeStart: Date; rangeEnd: Date } | null) {
   const { appUser } = useAuth()
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [loading, setLoading] = useState(true)
@@ -39,10 +39,14 @@ export function useMeetings() {
 
   const currentUserId = appUser?.uid ?? ''
   const isAdmin = appUser?.role === 'admin'
+  const ownedTeamId = appUser?.ownedTeamId?.trim() || null
   const organizerName =
     appUser?.displayName?.trim() ||
     appUser?.email?.trim() ||
     'Usuario EXPANSIÓN'
+
+  const rangeStartMs = range?.rangeStart.getTime() ?? null
+  const rangeEndMs = range?.rangeEnd.getTime() ?? null
 
   const reload = useCallback(async () => {
     if (!currentUserId) {
@@ -55,7 +59,11 @@ export function useMeetings() {
     setError('')
 
     try {
-      const items = await meetingsService.listMeetingsForUser(currentUserId)
+      const rangeArg =
+        rangeStartMs != null && rangeEndMs != null
+          ? { rangeStart: new Date(rangeStartMs), rangeEnd: new Date(rangeEndMs) }
+          : undefined
+      const items = await meetingsService.listMeetingsForUser(currentUserId, rangeArg)
       setMeetings(items)
     } catch (loadError) {
       setMeetings([])
@@ -63,7 +71,7 @@ export function useMeetings() {
     } finally {
       setLoading(false)
     }
-  }, [currentUserId])
+  }, [currentUserId, rangeStartMs, rangeEndMs])
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -82,6 +90,7 @@ export function useMeetings() {
     reload,
     currentUserId,
     isAdmin,
+    ownedTeamId,
     organizerName,
     /** @deprecated use currentUserId — kept for schedule create organizerId */
     organizerId: currentUserId,

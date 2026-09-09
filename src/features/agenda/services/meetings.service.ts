@@ -27,6 +27,11 @@ import {
   assertCanTransitionMeetingStatus,
   deriveParticipantUserIds,
 } from '@/features/agenda/utils/meetingAccess'
+import {
+  findOverlappingMeetings,
+  toBusySlots,
+  type BusySlot,
+} from '@/features/agenda/utils/agendaScheduleUtils'
 import { addMinutes } from '@/features/agenda/utils/meetingDateUtils'
 import { mapMeetingDocument } from '@/features/agenda/utils/meetingMappers'
 import { googleCalendarFunctionsService } from '@/features/agenda/services/google-calendar-functions.service'
@@ -133,19 +138,42 @@ async function runMeetingsListQuery(
   }
 }
 
-async function listMeetingsForUser(uid: string): Promise<Meeting[]> {
+async function listMeetingsForUser(
+  uid: string,
+  range?: { rangeStart: Date; rangeEnd: Date },
+): Promise<Meeting[]> {
   const meetingsRef = collection(getFirebaseDb(), COLLECTIONS.meetings)
+  const rangeStartTs = range ? Timestamp.fromDate(range.rangeStart) : null
+  const rangeEndTs = range ? Timestamp.fromDate(range.rangeEnd) : null
 
   const organizedSnapshot = await runMeetingsListQuery('organizer', () =>
-    getDocs(query(meetingsRef, where('organizerId', '==', uid), orderBy('startAt', 'asc'))),
+    getDocs(
+      rangeStartTs && rangeEndTs
+        ? query(
+            meetingsRef,
+            where('organizerId', '==', uid),
+            where('startAt', '>=', rangeStartTs),
+            where('startAt', '<=', rangeEndTs),
+            orderBy('startAt', 'asc'),
+          )
+        : query(meetingsRef, where('organizerId', '==', uid), orderBy('startAt', 'asc')),
+    ),
   )
   const participatingSnapshot = await runMeetingsListQuery('participant', () =>
     getDocs(
-      query(
-        meetingsRef,
-        where('participantUserIds', 'array-contains', uid),
-        orderBy('startAt', 'asc'),
-      ),
+      rangeStartTs && rangeEndTs
+        ? query(
+            meetingsRef,
+            where('participantUserIds', 'array-contains', uid),
+            where('startAt', '>=', rangeStartTs),
+            where('startAt', '<=', rangeEndTs),
+            orderBy('startAt', 'asc'),
+          )
+        : query(
+            meetingsRef,
+            where('participantUserIds', 'array-contains', uid),
+            orderBy('startAt', 'asc'),
+          ),
     ),
   )
 
@@ -162,6 +190,70 @@ async function listMeetingsForUser(uid: string): Promise<Meeting[]> {
   }
 
   return sortMeetingsByStartAt([...byId.values()])
+}
+
+const MAX_MEETING_DURATION_MS = 8 * 60 * 60 * 1000
+
+/** Organizer conflicts in a bounded window (no full-history scan). */
+async function findOrganizerScheduleConflicts(options: {
+  organizerId: string
+  startAt: Date
+  endAt: Date
+  ignoreMeetingId?: string | null
+}): Promise<Meeting[]> {
+  const { organizerId, startAt, endAt, ignoreMeetingId } = options
+  const windowStart = new Date(startAt.getTime() - MAX_MEETING_DURATION_MS)
+  const meetingsRef = collection(getFirebaseDb(), COLLECTIONS.meetings)
+  const snapshot = await runMeetingsListQuery('organizer', () =>
+    getDocs(
+      query(
+        meetingsRef,
+        where('organizerId', '==', organizerId),
+        where('startAt', '>=', Timestamp.fromDate(windowStart)),
+        where('startAt', '<', Timestamp.fromDate(endAt)),
+        orderBy('startAt', 'asc'),
+      ),
+    ),
+  )
+  const meetings = snapshot.docs.map((meetingDoc) =>
+    mapMeetingDocument(meetingDoc.id, meetingDoc.data()),
+  )
+  return findOverlappingMeetings({
+    meetings,
+    startAt,
+    endAt,
+    ignoreMeetingId,
+  })
+}
+
+/** Busy intervals for a single day (organizer's own scheduled meetings). */
+async function listOrganizerBusySlotsForDay(options: {
+  organizerId: string
+  day: Date
+}): Promise<BusySlot[]> {
+  const dayStart = new Date(options.day)
+  dayStart.setHours(0, 0, 0, 0)
+  const dayEnd = new Date(options.day)
+  dayEnd.setHours(23, 59, 59, 999)
+  const windowStart = new Date(dayStart.getTime() - MAX_MEETING_DURATION_MS)
+
+  const snapshot = await runMeetingsListQuery('organizer', () =>
+    getDocs(
+      query(
+        collection(getFirebaseDb(), COLLECTIONS.meetings),
+        where('organizerId', '==', options.organizerId),
+        where('startAt', '>=', Timestamp.fromDate(windowStart)),
+        where('startAt', '<=', Timestamp.fromDate(dayEnd)),
+        orderBy('startAt', 'asc'),
+      ),
+    ),
+  )
+  const meetings = snapshot.docs.map((meetingDoc) =>
+    mapMeetingDocument(meetingDoc.id, meetingDoc.data()),
+  )
+  return toBusySlots(meetings).filter(
+    (slot) => slot.startAt.getTime() < dayEnd.getTime() && slot.endAt.getTime() > dayStart.getTime(),
+  )
 }
 
 /** @deprecated Prefer listMeetingsForUser — kept for callers that only need organized meetings. */
@@ -860,6 +952,8 @@ async function recordMeetingResult(
 export const meetingsService = {
   listMeetingsForUser,
   listMeetingsByOrganizer,
+  findOrganizerScheduleConflicts,
+  listOrganizerBusySlotsForDay,
   getMeetingById,
   listMeetingHistory,
   createMeeting,

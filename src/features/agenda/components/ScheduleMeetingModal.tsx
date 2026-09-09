@@ -10,6 +10,7 @@ import type {
 } from '@/features/agenda/types/meeting.types'
 import {
   buildMeetingFormValues,
+  resolveDurationMinutes,
   toCreateMeetingInput,
   toUpdateMeetingInput,
   validateMeetingForm,
@@ -21,6 +22,11 @@ import {
 } from '@/features/agenda/utils/meetingLabels'
 import { meetingsService } from '@/features/agenda/services/meetings.service'
 import { googleCalendarFunctionsService } from '@/features/agenda/services/google-calendar-functions.service'
+import { ConflictAvailabilityPanel } from '@/features/agenda/components/ConflictAvailabilityPanel'
+import {
+  addMinutes,
+  combineLocalDateAndTime,
+} from '@/features/agenda/utils/meetingDateUtils'
 import {
   assertParticipantsWithinGroup,
   buildGroupParticipantsFromMembers,
@@ -78,6 +84,16 @@ export function ScheduleMeetingModal({
   const [individualMembers, setIndividualMembers] = useState<GroupMemberOption[]>([])
   const [loadingGroups, setLoadingGroups] = useState(false)
   const [loadingGroupMembers, setLoadingGroupMembers] = useState(false)
+  const [acknowledgeConflicts, setAcknowledgeConflicts] = useState(false)
+
+  const conflictWindow = useMemo(() => {
+    const startAt = combineLocalDateAndTime(values.date, values.time)
+    const duration = resolveDurationMinutes(values)
+    if (!startAt || !Number.isFinite(duration) || duration < 5) {
+      return { startAt: null as Date | null, endAt: null as Date | null }
+    }
+    return { startAt, endAt: addMinutes(startAt, duration) }
+  }, [values])
 
   useEffect(() => {
     if (!open) {
@@ -405,6 +421,22 @@ export function ScheduleMeetingModal({
 
     setSubmitting(true)
     try {
+      if (conflictWindow.startAt && conflictWindow.endAt) {
+        const conflicts = await meetingsService.findOrganizerScheduleConflicts({
+          organizerId,
+          startAt: conflictWindow.startAt,
+          endAt: conflictWindow.endAt,
+          ignoreMeetingId: mode === 'edit' ? meeting?.id : null,
+        })
+        if (conflicts.length > 0 && !acknowledgeConflicts) {
+          setErrors({
+            form: 'Tienes otra reunión en este horario. Cambia la hora o marca “Continuar de todas formas”.',
+          })
+          setSubmitting(false)
+          return
+        }
+      }
+
       if (values.meetingAudience === 'group') {
         const allowed = new Set(groupMembers.map((member) => member.userId))
         assertParticipantsWithinGroup(values.participants, allowed)
@@ -707,6 +739,15 @@ export function ScheduleMeetingModal({
               {errors.time ? <p className="mt-1 text-xs text-red-600">{errors.time}</p> : null}
             </div>
           </div>
+
+          <ConflictAvailabilityPanel
+            organizerId={organizerId}
+            startAt={conflictWindow.startAt}
+            endAt={conflictWindow.endAt}
+            ignoreMeetingId={mode === 'edit' ? meeting?.id : null}
+            acknowledgeConflicts={acknowledgeConflicts}
+            onAcknowledgeChange={setAcknowledgeConflicts}
+          />
 
           <div>
             <label

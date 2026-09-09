@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Loader2, X } from 'lucide-react'
 import { Button, Input, Textarea } from '@/components/ui'
 import type { Meeting } from '@/features/agenda/types/meeting.types'
+import { ConflictAvailabilityPanel } from '@/features/agenda/components/ConflictAvailabilityPanel'
 import { meetingsService } from '@/features/agenda/services/meetings.service'
 import {
+  addMinutes,
   combineLocalDateAndTime,
   formatMeetingDateTimeRange,
   getBrowserTimezone,
@@ -43,6 +45,16 @@ export function RescheduleMeetingModal({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [sourceId, setSourceId] = useState(meeting?.id ?? null)
+  const [acknowledgeConflicts, setAcknowledgeConflicts] = useState(false)
+
+  const conflictWindow = useMemo(() => {
+    const startAt = combineLocalDateAndTime(date, time)
+    const duration = resolveRescheduleDuration(durationMinutes, customDurationMinutes)
+    if (!startAt || !Number.isFinite(duration) || duration < 5) {
+      return { startAt: null as Date | null, endAt: null as Date | null }
+    }
+    return { startAt, endAt: addMinutes(startAt, duration) }
+  }, [date, time, durationMinutes, customDurationMinutes])
 
   if (meeting && meeting.id !== sourceId) {
     const nextStart = timestampToDate(meeting.startAt)
@@ -53,6 +65,7 @@ export function RescheduleMeetingModal({
     setCustomDurationMinutes('')
     setReason('')
     setError('')
+    setAcknowledgeConflicts(false)
   }
 
   useEffect(() => {
@@ -102,6 +115,22 @@ export function RescheduleMeetingModal({
     setSubmitting(true)
     setError('')
     try {
+      if (conflictWindow.startAt && conflictWindow.endAt) {
+        const conflicts = await meetingsService.findOrganizerScheduleConflicts({
+          organizerId,
+          startAt: conflictWindow.startAt,
+          endAt: conflictWindow.endAt,
+          ignoreMeetingId: activeMeeting.id,
+        })
+        if (conflicts.length > 0 && !acknowledgeConflicts) {
+          setError(
+            'Tienes otra reunión en este horario. Cambia la hora o marca “Continuar de todas formas”.',
+          )
+          setSubmitting(false)
+          return
+        }
+      }
+
       const updated = await meetingsService.rescheduleMeeting(activeMeeting.id, organizerId, {
         startAt,
         durationMinutes: duration,
@@ -211,6 +240,15 @@ export function RescheduleMeetingModal({
               />
             ) : null}
           </div>
+
+          <ConflictAvailabilityPanel
+            organizerId={organizerId}
+            startAt={conflictWindow.startAt}
+            endAt={conflictWindow.endAt}
+            ignoreMeetingId={activeMeeting.id}
+            acknowledgeConflicts={acknowledgeConflicts}
+            onAcknowledgeChange={setAcknowledgeConflicts}
+          />
 
           <Textarea
             label="Motivo (opcional)"

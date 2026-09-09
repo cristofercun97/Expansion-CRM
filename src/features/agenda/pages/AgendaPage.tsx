@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CalendarDays, Loader2, Plus } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, Filter, Loader2, Plus, Search, X } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
-import { Button, EmptyState } from '@/components/ui'
+import { Button, EmptyState, Input } from '@/components/ui'
 import { useToast } from '@/components/ui/toast/ToastProvider'
 import { GoogleCalendarStatusCard } from '@/features/agenda/components/GoogleCalendarStatusCard'
 import { MeetingCard } from '@/features/agenda/components/MeetingCard'
@@ -12,14 +12,28 @@ import { RescheduleMeetingModal } from '@/features/agenda/components/RescheduleM
 import { ScheduleMeetingModal } from '@/features/agenda/components/ScheduleMeetingModal'
 import { useMeetings } from '@/features/agenda/hooks/useMeetings'
 import type {
-  AgendaStatusFilter,
-  AgendaViewMode,
   GoogleCalendarConnectionStatus,
   Meeting,
+  MeetingAudience,
+  MeetingMode,
+  MeetingStatus,
 } from '@/features/agenda/types/meeting.types'
 import {
+  EMPTY_ADVANCED_FILTERS,
+  applyAdvancedFilters,
+  filterTeamVisibleMeetings,
+  formatViewRangeLabel,
+  getViewRange,
+  shiftAnchor,
+  type AgendaAdvancedFilters,
+  type AgendaCalendarView,
+} from '@/features/agenda/utils/agendaScheduleUtils'
+import {
+  loadAgendaViewPreference,
+  saveAgendaViewPreference,
+} from '@/features/agenda/utils/agendaViewPrefs'
+import {
   addDays,
-  endOfDay,
   getMonthCalendarDays,
   isSameDay,
   startOfDay,
@@ -29,25 +43,54 @@ import {
 } from '@/features/agenda/utils/meetingDateUtils'
 import { contactsService } from '@/features/contacts/services/contacts.service'
 import type { Contact } from '@/features/contacts/types/contact.types'
+import { listAccessibleTeamsForScheduling } from '@/features/agenda/utils/meetingGroupService'
 import { cn } from '@/lib/utils'
 
-const FILTERS: Array<{ id: AgendaStatusFilter; label: string }> = [
-  { id: 'all', label: 'Todas' },
-  { id: 'today', label: 'Hoy' },
-  { id: 'upcoming', label: 'Próximas' },
-  { id: 'completed', label: 'Realizadas' },
-  { id: 'cancelled', label: 'Canceladas' },
+const VIEW_OPTIONS: Array<{ id: AgendaCalendarView; label: string; mobilePriority?: boolean }> = [
+  { id: 'day', label: 'Día', mobilePriority: true },
+  { id: 'list', label: 'Lista', mobilePriority: true },
+  { id: 'week', label: 'Semana' },
+  { id: 'month', label: 'Mes' },
 ]
+
+const STATUS_OPTIONS: Array<{ id: MeetingStatus; label: string }> = [
+  { id: 'scheduled', label: 'Programada' },
+  { id: 'completed', label: 'Realizada' },
+  { id: 'no_show', label: 'No asistió' },
+  { id: 'cancelled', label: 'Cancelada' },
+]
+
+const MODE_OPTIONS: Array<{ id: MeetingMode; label: string }> = [
+  { id: 'video', label: 'Video' },
+  { id: 'in_person', label: 'Presencial' },
+  { id: 'other', label: 'Otra' },
+]
+
+const AUDIENCE_OPTIONS: Array<{ id: MeetingAudience; label: string }> = [
+  { id: 'individual', label: 'Individual' },
+  { id: 'group', label: 'Grupo' },
+]
+
+function toggleInList<T extends string>(list: T[], value: T): T[] {
+  return list.includes(value) ? list.filter((item) => item !== value) : [...list, value]
+}
 
 export function AgendaPage() {
   const { showToast } = useToast()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { meetings, loading, error, reload, organizerId, currentUserId, isAdmin, organizerName } =
-    useMeetings()
+  const [viewMode, setViewMode] = useState<AgendaCalendarView>(() => loadAgendaViewPreference('list'))
+  const [anchorDate, setAnchorDate] = useState(() => startOfDay(new Date()))
+  const queryRange = useMemo(() => getViewRange(viewMode, anchorDate), [viewMode, anchorDate])
+  const { meetings, loading, error, reload, organizerId, currentUserId, isAdmin, organizerName, ownedTeamId } =
+    useMeetings(queryRange)
+
   const [contacts, setContacts] = useState<Contact[]>([])
-  const [filter, setFilter] = useState<AgendaStatusFilter>('upcoming')
-  const [viewMode, setViewMode] = useState<AgendaViewMode>('list')
-  const [monthCursor, setMonthCursor] = useState(() => startOfMonth(new Date()))
+  const [filters, setFilters] = useState<AgendaAdvancedFilters>(EMPTY_ADVANCED_FILTERS)
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [agendaScope, setAgendaScope] = useState<'mine' | 'team'>('mine')
+  const [teamMemberFilter, setTeamMemberFilter] = useState<string>('all')
+  const [accessibleGroups, setAccessibleGroups] = useState<Array<{ id: string; name: string }>>([])
+
   const [scheduleOpen, setScheduleOpen] = useState(false)
   const [scheduleMode, setScheduleMode] = useState<'create' | 'edit'>('create')
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null)
@@ -64,6 +107,9 @@ export function AgendaPage() {
     email: null,
     configured: false,
   })
+
+  const canShowTeamScope = Boolean(ownedTeamId)
+  const rangeLabel = formatViewRangeLabel(viewMode, anchorDate)
 
   const handleGoogleStatusChange = useCallback((status: GoogleCalendarConnectionStatus) => {
     setGoogleStatus(status)
@@ -100,33 +146,46 @@ export function AgendaPage() {
   }
 
   useEffect(() => {
-    if (!meetingDeepLinkId || meetingDeepLinkId !== consumedMeetingDeepLink) {
-      return
-    }
+    if (!meetingDeepLinkId || meetingDeepLinkId !== consumedMeetingDeepLink) return
     const next = new URLSearchParams(searchParams)
-    if (!next.has('meetingId')) {
-      return
-    }
+    if (!next.has('meetingId')) return
     next.delete('meetingId')
     setSearchParams(next, { replace: true })
   }, [meetingDeepLinkId, consumedMeetingDeepLink, searchParams, setSearchParams])
 
   useEffect(() => {
-    if (!organizerId) {
-      return
-    }
-
-    void contactsService.getContactsByOwner(organizerId).then(setContacts).catch(() => {
-      setContacts([])
-    })
+    if (!organizerId) return
+    void contactsService.getContactsByOwner(organizerId).then(setContacts).catch(() => setContacts([]))
   }, [organizerId])
 
   useEffect(() => {
-    const googleParam = searchParams.get('googleCalendar')
-    if (!googleParam) {
-      return
-    }
+    if (!organizerId) return
+    void listAccessibleTeamsForScheduling(organizerId)
+      .then((teams) => {
+        setAccessibleGroups(teams.map((team) => ({ id: team.id, name: team.name })))
+      })
+      .catch(() => setAccessibleGroups([]))
+  }, [organizerId])
 
+  const teamMembers = useMemo(() => {
+    if (agendaScope !== 'team' || !ownedTeamId) return []
+    const byUid = new Map<string, string>()
+    for (const meeting of filterTeamVisibleMeetings(meetings, ownedTeamId)) {
+      if (meeting.organizerId) {
+        byUid.set(meeting.organizerId, meeting.organizerName || meeting.organizerId)
+      }
+      for (const participant of meeting.participants || []) {
+        if (participant.userId) {
+          byUid.set(participant.userId, participant.name || participant.userId)
+        }
+      }
+    }
+    return [...byUid.entries()].map(([uid, name]) => ({ uid, name }))
+  }, [agendaScope, meetings, ownedTeamId])
+
+  useEffect(() => {
+    const googleParam = searchParams.get('googleCalendar')
+    if (!googleParam) return
     if (googleParam === 'connected') {
       showToast('Google Calendar conectado correctamente.', 'success')
     } else if (googleParam === 'missing_refresh') {
@@ -137,64 +196,72 @@ export function AgendaPage() {
     } else {
       showToast('No pudimos completar la conexión con Google Calendar.', 'info')
     }
-
     const next = new URLSearchParams(searchParams)
     next.delete('googleCalendar')
     setSearchParams(next, { replace: true })
   }, [searchParams, setSearchParams, showToast])
 
   useEffect(() => {
-    if (!scheduleQueryKey) {
-      return
-    }
-
+    if (!scheduleQueryKey) return
     const next = new URLSearchParams(searchParams)
-    if (!next.has('contactId') && !next.has('action')) {
-      return
-    }
-
+    if (!next.has('contactId') && !next.has('action')) return
     next.delete('contactId')
     next.delete('action')
     setSearchParams(next, { replace: true })
   }, [scheduleQueryKey, searchParams, setSearchParams])
 
-  const filteredMeetings = useMemo(() => {
-    const now = new Date()
-    const todayStart = startOfDay(now)
-    const todayEnd = endOfDay(now)
-
-    return meetings.filter((meeting) => {
-      const start = timestampToDate(meeting.startAt)
-      if (!start) {
-        return false
+  const scopedMeetings = useMemo(() => {
+    if (agendaScope === 'team' && ownedTeamId) {
+      let items = filterTeamVisibleMeetings(meetings, ownedTeamId)
+      if (teamMemberFilter !== 'all') {
+        items = items.filter(
+          (meeting) =>
+            meeting.organizerId === teamMemberFilter ||
+            (meeting.participantUserIds || []).includes(teamMemberFilter),
+        )
       }
+      return items
+    }
+    return meetings
+  }, [agendaScope, meetings, ownedTeamId, teamMemberFilter])
 
-      if (filter === 'today') {
-        return meeting.status === 'scheduled' && start >= todayStart && start <= todayEnd
-      }
+  const filteredMeetings = useMemo(
+    () => applyAdvancedFilters(scopedMeetings, filters, currentUserId),
+    [scopedMeetings, filters, currentUserId],
+  )
 
-      if (filter === 'upcoming') {
-        return meeting.status === 'scheduled' && start >= todayStart
-      }
-
-      if (filter === 'completed') {
-        return meeting.status === 'completed' || meeting.status === 'no_show'
-      }
-
-      if (filter === 'cancelled') {
-        return meeting.status === 'cancelled'
-      }
-
-      return true
-    })
-  }, [filter, meetings])
+  const dayMeetingsSorted = useMemo(() => {
+    return [...filteredMeetings]
+      .filter((meeting) => {
+        const start = timestampToDate(meeting.startAt)
+        return start ? isSameDay(start, anchorDate) : false
+      })
+      .sort((left, right) => {
+        const leftMs = timestampToDate(left.startAt)?.getTime() ?? 0
+        const rightMs = timestampToDate(right.startAt)?.getTime() ?? 0
+        return leftMs - rightMs
+      })
+  }, [filteredMeetings, anchorDate])
 
   const weekDays = useMemo(() => {
-    const start = startOfWeek(new Date())
+    const start = startOfWeek(anchorDate)
     return Array.from({ length: 7 }, (_, index) => addDays(start, index))
-  }, [])
+  }, [anchorDate])
 
-  const monthDays = useMemo(() => getMonthCalendarDays(monthCursor), [monthCursor])
+  const monthDays = useMemo(() => getMonthCalendarDays(anchorDate), [anchorDate])
+  const monthCursor = startOfMonth(anchorDate)
+
+  const activeFilterCount =
+    filters.statuses.length +
+    filters.modes.length +
+    filters.audiences.length +
+    (filters.groupId ? 1 : 0) +
+    (filters.role !== 'all' ? 1 : 0)
+
+  function changeView(mode: AgendaCalendarView) {
+    setViewMode(mode)
+    saveAgendaViewPreference(mode)
+  }
 
   function openCreate() {
     setScheduleMode('create')
@@ -212,6 +279,151 @@ export function AgendaPage() {
     setSelectedMeeting(meeting)
     void reload()
   }
+
+  function clearFilters() {
+    setFilters(EMPTY_ADVANCED_FILTERS)
+  }
+
+  const filtersPanel = (
+    <div className="space-y-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-hero-text">Filtros</p>
+        <button
+          type="button"
+          className="text-xs font-medium text-gold-light hover:underline"
+          onClick={clearFilters}
+        >
+          Limpiar filtros
+        </button>
+      </div>
+
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-hero-text/55">Estado</p>
+        <div className="flex flex-wrap gap-2">
+          {STATUS_OPTIONS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() =>
+                setFilters((current) => ({
+                  ...current,
+                  statuses: toggleInList(current.statuses, item.id),
+                }))
+              }
+              className={cn(
+                'min-h-9 rounded-lg border px-2.5 text-xs font-medium',
+                filters.statuses.includes(item.id)
+                  ? 'border-gold bg-gold/15 text-gold-light'
+                  : 'border-white/15 bg-white/5 text-hero-text/75',
+              )}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-hero-text/55">Tipo</p>
+        <div className="flex flex-wrap gap-2">
+          {MODE_OPTIONS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() =>
+                setFilters((current) => ({
+                  ...current,
+                  modes: toggleInList(current.modes, item.id),
+                }))
+              }
+              className={cn(
+                'min-h-9 rounded-lg border px-2.5 text-xs font-medium',
+                filters.modes.includes(item.id)
+                  ? 'border-gold bg-gold/15 text-gold-light'
+                  : 'border-white/15 bg-white/5 text-hero-text/75',
+              )}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-hero-text/55">Audiencia</p>
+        <div className="flex flex-wrap gap-2">
+          {AUDIENCE_OPTIONS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() =>
+                setFilters((current) => ({
+                  ...current,
+                  audiences: toggleInList(current.audiences, item.id),
+                }))
+              }
+              className={cn(
+                'min-h-9 rounded-lg border px-2.5 text-xs font-medium',
+                filters.audiences.includes(item.id)
+                  ? 'border-gold bg-gold/15 text-gold-light'
+                  : 'border-white/15 bg-white/5 text-hero-text/75',
+              )}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-hero-text/55">Grupo</p>
+        <select
+          className="min-h-10 w-full rounded-lg border border-white/15 bg-petrol-deep px-3 text-sm text-hero-text"
+          value={filters.groupId || ''}
+          onChange={(event) =>
+            setFilters((current) => ({
+              ...current,
+              groupId: event.target.value || null,
+            }))
+          }
+        >
+          <option value="">Todos los grupos accesibles</option>
+          {accessibleGroups.map((group) => (
+            <option key={group.id} value={group.id}>
+              {group.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-hero-text/55">Rol</p>
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              ['all', 'Todos'],
+              ['organized', 'Organizadas por mí'],
+              ['invited', 'Invitado'],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setFilters((current) => ({ ...current, role: id }))}
+              className={cn(
+                'min-h-9 rounded-lg border px-2.5 text-xs font-medium',
+                filters.role === id
+                  ? 'border-gold bg-gold/15 text-gold-light'
+                  : 'border-white/15 bg-white/5 text-hero-text/75',
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
 
   return (
     <div className="space-y-6 px-4 py-6 sm:px-8">
@@ -237,211 +449,338 @@ export function AgendaPage() {
 
       <GoogleCalendarStatusCard onStatusChange={handleGoogleStatusChange} />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {canShowTeamScope ? (
         <div className="flex flex-wrap gap-2">
-          {FILTERS.map((item) => (
+          <button
+            type="button"
+            onClick={() => setAgendaScope('mine')}
+            className={cn(
+              'min-h-10 rounded-lg border px-3 text-sm font-medium',
+              agendaScope === 'mine'
+                ? 'border-teal-accent/40 bg-teal-accent/15 text-teal-accent'
+                : 'border-white/15 bg-white/5 text-hero-text/75',
+            )}
+          >
+            Mi agenda
+          </button>
+          <button
+            type="button"
+            onClick={() => setAgendaScope('team')}
+            className={cn(
+              'min-h-10 rounded-lg border px-3 text-sm font-medium',
+              agendaScope === 'team'
+                ? 'border-teal-accent/40 bg-teal-accent/15 text-teal-accent'
+                : 'border-white/15 bg-white/5 text-hero-text/75',
+            )}
+          >
+            Agenda del equipo
+          </button>
+        </div>
+      ) : null}
+
+      {agendaScope === 'team' ? (
+        <div className="rounded-xl border border-amber-400/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+          Solo reuniones de grupo de tu equipo a las que ya tienes acceso. No se muestran agendas
+          privadas de otros miembros.
+          {teamMembers.length > 0 ? (
+            <div className="mt-2">
+              <select
+                className="min-h-9 rounded-lg border border-white/15 bg-petrol-deep px-2 text-sm text-hero-text"
+                value={teamMemberFilter}
+                onChange={(event) => setTeamMemberFilter(event.target.value)}
+              >
+                <option value="all">Todos</option>
+                {teamMembers.map((member) => (
+                  <option key={member.uid} value={member.uid}>
+                    {member.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap gap-2">
+          {VIEW_OPTIONS.map((item) => (
             <button
               key={item.id}
               type="button"
-              onClick={() => setFilter(item.id)}
+              onClick={() => changeView(item.id)}
               className={cn(
-                'min-h-10 rounded-lg border px-3 text-sm font-medium transition-colors',
-                filter === item.id
-                  ? 'border-gold bg-gold/15 text-gold-light'
-                  : 'border-white/15 bg-white/5 text-hero-text/75 hover:bg-white/8',
+                'min-h-10 rounded-lg border px-3 text-sm font-medium',
+                !item.mobilePriority && 'hidden sm:inline-flex',
+                item.mobilePriority && 'inline-flex',
+                viewMode === item.id
+                  ? 'border-teal-accent/40 bg-teal-accent/15 text-teal-accent'
+                  : 'border-white/15 bg-white/5 text-hero-text/75',
               )}
             >
               {item.label}
             </button>
           ))}
+          {/* Always allow week/month on mobile via compact row */}
+          <div className="flex gap-2 sm:hidden">
+            {VIEW_OPTIONS.filter((item) => !item.mobilePriority).map((item) => (
+              <button
+                key={`m-${item.id}`}
+                type="button"
+                onClick={() => changeView(item.id)}
+                className={cn(
+                  'min-h-10 rounded-lg border px-3 text-sm font-medium',
+                  viewMode === item.id
+                    ? 'border-teal-accent/40 bg-teal-accent/15 text-teal-accent'
+                    : 'border-white/15 bg-white/5 text-hero-text/75',
+                )}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="flex gap-2">
-          {([
-            ['list', 'Lista'],
-            ['week', 'Semana'],
-            ['month', 'Mes'],
-          ] as const).map(([mode, label]) => (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => setViewMode(mode)}
-              className={cn(
-                'min-h-10 rounded-lg border px-3 text-sm font-medium',
-                viewMode === mode
-                  ? 'border-teal-accent/40 bg-teal-accent/15 text-teal-accent'
-                  : 'border-white/15 bg-white/5 text-hero-text/75',
-              )}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            aria-label="Anterior"
+            className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg border border-white/15 bg-white/5 text-hero-text"
+            onClick={() => setAnchorDate((current) => shiftAnchor(viewMode, current, -1))}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            className="min-h-10 rounded-lg border border-white/15 bg-white/5 px-3 text-sm font-medium text-hero-text"
+            onClick={() => setAnchorDate(startOfDay(new Date()))}
+          >
+            Hoy
+          </button>
+          <button
+            type="button"
+            aria-label="Siguiente"
+            className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg border border-white/15 bg-white/5 text-hero-text"
+            onClick={() => setAnchorDate((current) => shiftAnchor(viewMode, current, 1))}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+          <p className="min-w-0 flex-1 truncate text-sm font-semibold capitalize text-hero-text sm:flex-none">
+            {rangeLabel}
+          </p>
         </div>
       </div>
 
-      {loading ? (
-        <p className="flex items-center gap-2 text-sm text-hero-text/70">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Cargando agenda...
-        </p>
-      ) : error ? (
-        <p className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-          {error}
-        </p>
-      ) : filteredMeetings.length === 0 ? (
-        <EmptyState
-          icon={CalendarDays}
-          title="No tienes reuniones programadas."
-          description="Agenda una conversación y convierte tu próximo contacto en una acción concreta."
-          className="border-white/15 bg-white/5 [&_h3]:text-hero-text [&_p]:text-hero-text/70"
-          action={
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-hero-text/45" />
+          <Input
+            value={filters.query}
+            onChange={(event) =>
+              setFilters((current) => ({ ...current, query: event.target.value }))
+            }
+            placeholder="Buscar título, contacto, grupo o participante"
+            className="min-h-11 border-white/15 bg-white/5 pl-10 text-hero-text placeholder:text-hero-text/40"
+          />
+        </div>
+        <button
+          type="button"
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/5 px-3 text-sm font-medium text-hero-text lg:hidden"
+          onClick={() => setFiltersOpen(true)}
+        >
+          <Filter className="h-4 w-4" />
+          Filtros{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+        </button>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+        <div className="hidden lg:block">{filtersPanel}</div>
+
+        <div className="min-w-0">
+          {loading ? (
+            <p className="flex items-center gap-2 text-sm text-hero-text/70">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Cargando agenda...
+            </p>
+          ) : error ? (
+            <p className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+              {error}
+            </p>
+          ) : filteredMeetings.length === 0 ? (
+            <EmptyState
+              icon={CalendarDays}
+              title="No hay reuniones en este rango."
+              description="Prueba otro periodo, limpia filtros o agenda una nueva conversación."
+              className="border-white/15 bg-white/5 [&_h3]:text-hero-text [&_p]:text-hero-text/70"
+              action={
+                <Button
+                  type="button"
+                  onClick={openCreate}
+                  className="bg-gold text-petrol-deep hover:bg-gold-light"
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Nueva reunión
+                </Button>
+              }
+            />
+          ) : viewMode === 'day' ? (
+            <div className="space-y-3">
+              {dayMeetingsSorted.map((meeting) => (
+                <MeetingCard
+                  key={meeting.id}
+                  meeting={meeting}
+                  currentUserId={currentUserId}
+                  onOpen={setSelectedMeeting}
+                />
+              ))}
+            </div>
+          ) : viewMode === 'week' ? (
+            <div className="overflow-x-auto">
+              <div className="grid min-w-[640px] gap-3 md:grid-cols-7">
+                {weekDays.map((day) => {
+                  const items = filteredMeetings.filter((meeting) => {
+                    const start = timestampToDate(meeting.startAt)
+                    return start ? isSameDay(start, day) : false
+                  })
+                  return (
+                    <div
+                      key={day.toISOString()}
+                      className="rounded-2xl border border-white/10 bg-white/5 p-3"
+                    >
+                      <p className="text-xs font-semibold uppercase tracking-wide text-hero-text/55">
+                        {day.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric' })}
+                      </p>
+                      <div className="mt-2 space-y-2">
+                        {items.length === 0 ? (
+                          <p className="text-xs text-hero-text/40">Sin reuniones</p>
+                        ) : (
+                          items.map((meeting) => (
+                            <button
+                              key={meeting.id}
+                              type="button"
+                              onClick={() => setSelectedMeeting(meeting)}
+                              className="w-full rounded-lg border border-gold/20 bg-gold/10 px-2 py-2 text-left text-xs text-hero-text hover:bg-gold/15"
+                            >
+                              <span className="block font-semibold">{meeting.title}</span>
+                              <span className="text-hero-text/65">
+                                {timestampToDate(meeting.startAt)?.toLocaleTimeString('es-ES', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ) : viewMode === 'month' ? (
+            <div className="space-y-3 overflow-x-auto">
+              <div className="grid min-w-[560px] grid-cols-7 gap-1 text-center text-[11px] font-semibold uppercase tracking-wide text-hero-text/45 sm:gap-2 sm:text-xs">
+                {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((label) => (
+                  <div key={label} className="py-1">
+                    {label}
+                  </div>
+                ))}
+              </div>
+              <div className="grid min-w-[560px] grid-cols-7 gap-1 sm:gap-2">
+                {monthDays.map((day) => {
+                  const inCurrentMonth = day.getMonth() === monthCursor.getMonth()
+                  const items = filteredMeetings.filter((meeting) => {
+                    const start = timestampToDate(meeting.startAt)
+                    return start ? isSameDay(start, day) : false
+                  })
+                  const isToday = isSameDay(day, new Date())
+                  return (
+                    <button
+                      key={day.toISOString()}
+                      type="button"
+                      onClick={() => {
+                        setAnchorDate(startOfDay(day))
+                        changeView('day')
+                      }}
+                      className={cn(
+                        'min-h-20 rounded-xl border p-1.5 text-left sm:min-h-28 sm:p-2',
+                        inCurrentMonth
+                          ? 'border-white/10 bg-white/5'
+                          : 'border-white/5 bg-white/[0.02] opacity-55',
+                        isToday && 'border-gold/40',
+                      )}
+                    >
+                      <p
+                        className={cn(
+                          'text-xs font-semibold',
+                          isToday ? 'text-gold-light' : 'text-hero-text/70',
+                        )}
+                      >
+                        {day.getDate()}
+                      </p>
+                      <div className="mt-1 space-y-1">
+                        {items.slice(0, 3).map((meeting) => (
+                          <span
+                            key={meeting.id}
+                            className="block truncate rounded-md border border-gold/20 bg-gold/10 px-1 py-0.5 text-[10px] text-hero-text sm:text-xs"
+                          >
+                            {meeting.title}
+                          </span>
+                        ))}
+                        {items.length > 3 ? (
+                          <p className="text-[10px] text-hero-text/45">+{items.length - 3}</p>
+                        ) : null}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {filteredMeetings.map((meeting) => (
+                <MeetingCard
+                  key={meeting.id}
+                  meeting={meeting}
+                  currentUserId={currentUserId}
+                  onOpen={setSelectedMeeting}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {filtersOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center lg:hidden">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/50"
+            aria-label="Cerrar filtros"
+            onClick={() => setFiltersOpen(false)}
+          />
+          <div className="relative z-10 max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-petrol-deep p-4 shadow-xl">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-sm font-semibold text-hero-text">Filtros</p>
+              <button
+                type="button"
+                className="rounded-lg p-1.5 text-hero-text/70"
+                onClick={() => setFiltersOpen(false)}
+                aria-label="Cerrar"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            {filtersPanel}
             <Button
               type="button"
-              onClick={openCreate}
-              className="bg-gold text-petrol-deep hover:bg-gold-light"
+              className="mt-4 w-full bg-gold text-petrol-deep hover:bg-gold-light"
+              onClick={() => setFiltersOpen(false)}
             >
-              <Plus className="mr-2 h-4 w-4" />
-              Crear mi primera reunión
+              Aplicar
             </Button>
-          }
-        />
-      ) : viewMode === 'week' ? (
-        <div className="grid gap-3 md:grid-cols-7">
-          {weekDays.map((day) => {
-            const dayMeetings = filteredMeetings.filter((meeting) => {
-              const start = timestampToDate(meeting.startAt)
-              return start ? isSameDay(start, day) : false
-            })
-
-            return (
-              <div
-                key={day.toISOString()}
-                className="rounded-2xl border border-white/10 bg-white/5 p-3"
-              >
-                <p className="text-xs font-semibold uppercase tracking-wide text-hero-text/55">
-                  {day.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric' })}
-                </p>
-                <div className="mt-2 space-y-2">
-                  {dayMeetings.length === 0 ? (
-                    <p className="text-xs text-hero-text/40">Sin reuniones</p>
-                  ) : (
-                    dayMeetings.map((meeting) => (
-                      <button
-                        key={meeting.id}
-                        type="button"
-                        onClick={() => setSelectedMeeting(meeting)}
-                        className="w-full rounded-lg border border-gold/20 bg-gold/10 px-2 py-2 text-left text-xs text-hero-text hover:bg-gold/15"
-                      >
-                        <span className="block font-semibold">{meeting.title}</span>
-                        <span className="text-hero-text/65">
-                          {timestampToDate(meeting.startAt)?.toLocaleTimeString('es-ES', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                        </span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      ) : viewMode === 'month' ? (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <button
-              type="button"
-              className="min-h-10 rounded-lg border border-white/15 bg-white/5 px-3 text-sm text-hero-text/80"
-              onClick={() =>
-                setMonthCursor((current) => startOfMonth(new Date(current.getFullYear(), current.getMonth() - 1, 1)))
-              }
-            >
-              Anterior
-            </button>
-            <p className="text-sm font-semibold capitalize text-hero-text">
-              {monthCursor.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
-            </p>
-            <button
-              type="button"
-              className="min-h-10 rounded-lg border border-white/15 bg-white/5 px-3 text-sm text-hero-text/80"
-              onClick={() =>
-                setMonthCursor((current) => startOfMonth(new Date(current.getFullYear(), current.getMonth() + 1, 1)))
-              }
-            >
-              Siguiente
-            </button>
-          </div>
-
-          <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-semibold uppercase tracking-wide text-hero-text/45 sm:gap-2 sm:text-xs">
-            {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((label) => (
-              <div key={label} className="py-1">
-                {label}
-              </div>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-7 gap-1 sm:gap-2">
-            {monthDays.map((day) => {
-              const inCurrentMonth = day.getMonth() === monthCursor.getMonth()
-              const dayMeetings = filteredMeetings.filter((meeting) => {
-                const start = timestampToDate(meeting.startAt)
-                return start ? isSameDay(start, day) : false
-              })
-              const isToday = isSameDay(day, new Date())
-
-              return (
-                <div
-                  key={day.toISOString()}
-                  className={cn(
-                    'min-h-20 rounded-xl border p-1.5 sm:min-h-28 sm:p-2',
-                    inCurrentMonth
-                      ? 'border-white/10 bg-white/5'
-                      : 'border-white/5 bg-white/[0.02] opacity-55',
-                    isToday && 'border-gold/40',
-                  )}
-                >
-                  <p
-                    className={cn(
-                      'text-xs font-semibold',
-                      isToday ? 'text-gold-light' : 'text-hero-text/70',
-                    )}
-                  >
-                    {day.getDate()}
-                  </p>
-                  <div className="mt-1 space-y-1">
-                    {dayMeetings.slice(0, 3).map((meeting) => (
-                      <button
-                        key={meeting.id}
-                        type="button"
-                        onClick={() => setSelectedMeeting(meeting)}
-                        className="w-full truncate rounded-md border border-gold/20 bg-gold/10 px-1 py-0.5 text-left text-[10px] text-hero-text hover:bg-gold/15 sm:text-xs"
-                        title={meeting.title}
-                      >
-                        {meeting.title}
-                      </button>
-                    ))}
-                    {dayMeetings.length > 3 ? (
-                      <p className="text-[10px] text-hero-text/45">+{dayMeetings.length - 3}</p>
-                    ) : null}
-                  </div>
-                </div>
-              )
-            })}
           </div>
         </div>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filteredMeetings.map((meeting) => (
-            <MeetingCard
-              key={meeting.id}
-              meeting={meeting}
-              currentUserId={currentUserId}
-              onOpen={setSelectedMeeting}
-            />
-          ))}
-        </div>
-      )}
+      ) : null}
 
       {scheduleOpen ? (
         <ScheduleMeetingModal

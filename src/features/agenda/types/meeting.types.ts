@@ -182,6 +182,7 @@ export type GoogleCalendarConnectionStatus = {
   configured: boolean
 }
 
-export type AgendaViewMode = 'list' | 'week' | 'month'
+export type AgendaViewMode = 'day' | 'list' | 'week' | 'month'
 
+/** @deprecated Prefer advanced filters in Phase 3A. Kept for compatibility. */
 export type AgendaStatusFilter = 'all' | 'today' | 'upcoming' | 'completed' | 'cancelled'
