@@ -1,7 +1,6 @@
 /**
  * Firestore Rules tests for Agenda meetings access.
- *
- * Requires Java + Firestore emulator.
+ * Requires JDK 21+ and Firebase Emulator.
  * Run: npm run test:agenda-rules
  */
 import { readFileSync } from 'node:fs'
@@ -20,12 +19,11 @@ const USER_A = 'USER_A'
 const USER_B = 'USER_B'
 const USER_C = 'USER_C'
 const ADMIN = 'ADMIN_USER'
-
 const MEETING_ID = 'meeting_ab'
 
-function authContext(testEnv: RulesTestEnvironment, uid: string, emailVerified = true) {
+function authContext(testEnv: RulesTestEnvironment, uid: string) {
   return testEnv.authenticatedContext(uid, {
-    email_verified: emailVerified,
+    email_verified: true,
   })
 }
 
@@ -56,16 +54,28 @@ async function seed(testEnv: RulesTestEnvironment) {
         { type: 'user', userId: USER_B, name: 'Participante B', email: 'b@example.com' },
       ],
       participantUserIds: [USER_B],
-      meetingProvider: 'none',
-      googleCalendarEventId: null,
-      googleCalendarHtmlLink: null,
-      googleMeetUrl: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      meetingProvider: 'google_meet',
+      googleCalendarEventId: 'evt_original',
+      googleCalendarHtmlLink: 'https://calendar.google.com/event?eid=original',
+      googleMeetUrl: 'https://meet.google.com/aaa-bbbb-ccc',
+      createdAt: new Date('2026-09-01T10:00:00.000Z'),
+      updatedAt: new Date('2026-09-01T10:00:00.000Z'),
       createdBy: USER_A,
       updatedBy: USER_A,
       completedAt: null,
       cancelledAt: null,
+    })
+
+    await db.doc(`googleCalendarConnections/${USER_A}`).set({
+      email: 'a@example.com',
+      refreshToken: 'secret-refresh',
+      accessToken: 'secret-access',
+    })
+
+    await db.doc('googleOAuthStates/state_test_1').set({
+      uid: USER_A,
+      expiresAt: Date.now() + 60_000,
+      used: false,
     })
   })
 }
@@ -89,15 +99,25 @@ async function main() {
     const strangerDb = authContext(testEnv, USER_C).firestore()
     const adminDb = authContext(testEnv, ADMIN).firestore()
 
+    // READ matrix
     await assertSucceeds(organizerDb.doc(`meetings/${MEETING_ID}`).get())
     await assertSucceeds(participantDb.doc(`meetings/${MEETING_ID}`).get())
     await assertFails(strangerDb.doc(`meetings/${MEETING_ID}`).get())
     await assertSucceeds(adminDb.doc(`meetings/${MEETING_ID}`).get())
 
+    // UPDATE matrix
     await assertSucceeds(
       organizerDb.doc(`meetings/${MEETING_ID}`).update({
         title: 'Seguimiento actualizado',
         updatedBy: USER_A,
+        updatedAt: new Date(),
+      }),
+    )
+
+    await assertSucceeds(
+      adminDb.doc(`meetings/${MEETING_ID}`).update({
+        notes: 'Nota admin',
+        updatedBy: ADMIN,
         updatedAt: new Date(),
       }),
     )
@@ -110,34 +130,89 @@ async function main() {
     )
 
     await assertFails(
-      participantDb.doc(`meetings/${MEETING_ID}`).update({
-        organizerId: USER_B,
-        updatedBy: USER_B,
-      }),
-    )
-
-    await assertFails(
-      participantDb.doc(`meetings/${MEETING_ID}`).update({
-        participantUserIds: [USER_B, USER_C],
-        updatedBy: USER_B,
-      }),
-    )
-
-    await assertFails(
-      participantDb.doc(`meetings/${MEETING_ID}`).update({
-        googleMeetUrl: 'https://meet.google.com/fake',
-        googleCalendarEventId: 'fake-event',
-        updatedBy: USER_B,
-      }),
-    )
-
-    await assertFails(
       strangerDb.doc(`meetings/${MEETING_ID}`).update({
         title: 'Hackeo ajeno',
         updatedBy: USER_C,
       }),
     )
 
+    // Field-level attacks — participant
+    await assertFails(
+      participantDb.doc(`meetings/${MEETING_ID}`).update({
+        organizerId: USER_B,
+        updatedBy: USER_B,
+      }),
+    )
+    await assertFails(
+      participantDb.doc(`meetings/${MEETING_ID}`).update({
+        participantUserIds: [USER_B, USER_C],
+        updatedBy: USER_B,
+      }),
+    )
+    await assertFails(
+      participantDb.doc(`meetings/${MEETING_ID}`).update({
+        createdBy: USER_B,
+        updatedBy: USER_B,
+      }),
+    )
+    await assertFails(
+      participantDb.doc(`meetings/${MEETING_ID}`).update({
+        createdAt: new Date(),
+        updatedBy: USER_B,
+      }),
+    )
+    await assertFails(
+      participantDb.doc(`meetings/${MEETING_ID}`).update({
+        googleMeetUrl: 'https://meet.google.com/fake',
+        googleCalendarEventId: 'fake-event',
+        googleCalendarHtmlLink: 'https://calendar.google.com/fake',
+        updatedBy: USER_B,
+      }),
+    )
+
+    // Field-level attacks — stranger
+    await assertFails(
+      strangerDb.doc(`meetings/${MEETING_ID}`).update({
+        organizerId: USER_C,
+        participantUserIds: [USER_C],
+        googleMeetUrl: 'https://meet.google.com/x',
+        updatedBy: USER_C,
+      }),
+    )
+
+    // Organizer cannot mutate immutable audit fields
+    await assertFails(
+      organizerDb.doc(`meetings/${MEETING_ID}`).update({
+        organizerId: USER_C,
+        updatedBy: USER_A,
+      }),
+    )
+    await assertFails(
+      organizerDb.doc(`meetings/${MEETING_ID}`).update({
+        createdBy: USER_C,
+        updatedBy: USER_A,
+      }),
+    )
+    await assertFails(
+      organizerDb.doc(`meetings/${MEETING_ID}`).update({
+        createdAt: new Date('2030-01-01T00:00:00.000Z'),
+        updatedBy: USER_A,
+      }),
+    )
+
+    // DELETE — historical retention: only admin
+    await assertFails(organizerDb.doc(`meetings/${MEETING_ID}`).delete())
+    await assertFails(participantDb.doc(`meetings/${MEETING_ID}`).delete())
+    await assertFails(strangerDb.doc(`meetings/${MEETING_ID}`).delete())
+    await assertSucceeds(adminDb.doc(`meetings/${MEETING_ID}`).delete())
+
+    // Token / OAuth collections — client denied
+    await assertFails(organizerDb.doc(`googleCalendarConnections/${USER_A}`).get())
+    await assertFails(organizerDb.doc(`googleCalendarConnections/${USER_A}`).set({ email: 'x' }))
+    await assertFails(organizerDb.doc('googleOAuthStates/state_test_1').get())
+    await assertFails(organizerDb.doc('googleOAuthStates/state_test_1').set({ used: true }))
+
+    // Organizer can create
     await assertSucceeds(
       organizerDb.collection('meetings').add({
         title: 'Nueva reunión',
@@ -170,6 +245,9 @@ async function main() {
     )
 
     console.log('Agenda Firestore rules tests: PASS')
+    console.log('Matrix: organizer R/W OK | participant R-only | stranger deny | admin R/W/D OK')
+    console.log('Field lock: organizerId/createdBy/createdAt immutable | Google fields participant-deny')
+    console.log('Collections: googleCalendarConnections DENIED | googleOAuthStates DENIED')
   } finally {
     await testEnv.cleanup()
   }

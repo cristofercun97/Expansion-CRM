@@ -15,7 +15,7 @@
     "backfill:referral-uplines": "tsx scripts/backfill-referral-uplines.ts",
     "audit:referral-chain": "tsx scripts/audit-referral-chain.ts",
     "migrate:referral-rewards-payable": "tsx scripts/migrate-referral-rewards-payable.ts",
-    "test:agenda": "tsx scripts/test-agenda-utils.ts && tsx scripts/test-agenda-security-matrix.ts",
+    "test:agenda": "tsx scripts/test-agenda-utils.ts && tsx scripts/test-agenda-security-matrix.ts && tsx scripts/test-agenda-oauth-contracts.ts",
     "test:agenda-rules": "firebase emulators:exec --only firestore --project expansion-agenda-rules-test \"tsx scripts/test-agenda-rules.ts\""
   },
   "dependencies": {
