@@ -30,6 +30,7 @@ import {
 import { addMinutes } from '@/features/agenda/utils/meetingDateUtils'
 import { mapMeetingDocument } from '@/features/agenda/utils/meetingMappers'
 import { googleCalendarFunctionsService } from '@/features/agenda/services/google-calendar-functions.service'
+import { groupMeetingFunctionsService } from '@/features/agenda/services/group-meeting-functions.service'
 import { leadActivitiesService } from '@/services/lead-activities.service'
 import { COLLECTIONS, getFirebaseDb } from '@/lib/firebase'
 
@@ -235,20 +236,30 @@ function assertOrganizer(existing: Meeting, organizerId: string, action: string)
   }
 }
 
+function collectSelectedUserIds(
+  participants: CreateMeetingInput['participants'],
+  organizerId: string,
+): string[] {
+  return deriveParticipantUserIds(participants, organizerId)
+}
+
+function sameStringSet(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) {
+    return false
+  }
+  const rightSet = new Set(right)
+  return left.every((item) => rightSet.has(item))
+}
+
 async function createMeeting(organizerId: string, input: CreateMeetingInput): Promise<Meeting> {
+  if (input.meetingAudience === 'group') {
+    return createGroupMeetingViaBackend(organizerId, input)
+  }
+
   const endAt = addMinutes(input.startAt, input.durationMinutes)
   const db = getFirebaseDb()
   const meetingsRef = collection(db, COLLECTIONS.meetings)
   const participantUserIds = deriveParticipantUserIds(input.participants, organizerId)
-
-  if (input.meetingAudience === 'group') {
-    if (!input.groupId?.trim()) {
-      throw new Error('Selecciona un grupo para la reunión grupal.')
-    }
-    if (participantUserIds.length === 0) {
-      throw new Error('El grupo no tiene miembros disponibles.')
-    }
-  }
 
   let googleCalendarEventId: string | null = null
   let googleCalendarHtmlLink: string | null = null
@@ -291,8 +302,8 @@ async function createMeeting(organizerId: string, input: CreateMeetingInput): Pr
     organizerName: input.organizerName.trim(),
     contactId: input.contactId,
     meetingAudience: input.meetingAudience,
-    groupId: input.meetingAudience === 'group' ? input.groupId : null,
-    groupNameSnapshot: input.meetingAudience === 'group' ? input.groupNameSnapshot : null,
+    groupId: null,
+    groupNameSnapshot: null,
     participants: input.participants,
     participantUserIds,
     meetingMode: input.meetingMode,
@@ -343,6 +354,57 @@ async function createMeeting(organizerId: string, input: CreateMeetingInput): Pr
   return created
 }
 
+async function createGroupMeetingViaBackend(
+  organizerId: string,
+  input: CreateMeetingInput,
+): Promise<Meeting> {
+  const groupId = input.groupId?.trim()
+  if (!groupId) {
+    throw new Error('Selecciona un grupo para la reunión grupal.')
+  }
+
+  const memberSelectionMode = input.groupMemberSelectionMode === 'partial' ? 'partial' : 'all'
+  const selectedUserIds =
+    memberSelectionMode === 'partial'
+      ? collectSelectedUserIds(input.participants, organizerId)
+      : undefined
+
+  if (memberSelectionMode === 'partial' && (!selectedUserIds || selectedUserIds.length === 0)) {
+    throw new Error('El grupo no tiene miembros disponibles o la selección está vacía.')
+  }
+
+  const result = await groupMeetingFunctionsService.createGroupMeeting({
+    title: input.title,
+    type: input.type,
+    description: input.description,
+    notes: input.notes,
+    startAtIso: input.startAt.toISOString(),
+    durationMinutes: input.durationMinutes,
+    timezone: input.timezone,
+    groupId,
+    memberSelectionMode,
+    selectedUserIds,
+    meetingMode: input.meetingMode,
+    videoProvider: input.videoProvider,
+    meetingUrl: input.meetingUrl,
+    location: input.location,
+    organizerName: input.organizerName.trim(),
+  })
+
+  await createMeetingActivity(
+    organizerId,
+    null,
+    `Reunión agendada: ${input.title}`,
+  )
+
+  const created = await getMeetingById(result.meetingId)
+  if (!created) {
+    throw new Error('La reunión se creó, pero no pudimos cargarla.')
+  }
+
+  return created
+}
+
 async function updateMeeting(
   meetingId: string,
   organizerId: string,
@@ -358,6 +420,10 @@ async function updateMeeting(
 
   if (existing.status !== 'scheduled' && existing.status !== 'rescheduled') {
     throw new Error('Solo puedes editar reuniones programadas.')
+  }
+
+  if (existing.meetingAudience === 'group' || input.meetingAudience === 'group') {
+    return updateGroupMeetingViaBackend(meetingId, organizerId, existing, input)
   }
 
   const endAt = addMinutes(input.startAt, input.durationMinutes)
@@ -416,9 +482,9 @@ async function updateMeeting(
       durationMinutes: input.durationMinutes,
       timezone: input.timezone,
       contactId: input.contactId,
-      meetingAudience: input.meetingAudience,
-      groupId: input.meetingAudience === 'group' ? input.groupId : null,
-      groupNameSnapshot: input.meetingAudience === 'group' ? input.groupNameSnapshot : null,
+      meetingAudience: 'individual',
+      groupId: null,
+      groupNameSnapshot: null,
       participants: input.participants,
       participantUserIds,
       meetingMode: input.meetingMode,
@@ -437,6 +503,114 @@ async function updateMeeting(
     if (shouldSyncGoogle) {
       throw new Error(
         'La reunión se actualizó en Google pero no pudo sincronizarse con EXPANSIÓN.',
+        { cause: error },
+      )
+    }
+    throw error
+  }
+
+  const updated = await getMeetingById(meetingId)
+  if (!updated) {
+    throw new Error('La reunión se actualizó, pero no pudimos cargarla.')
+  }
+
+  return updated
+}
+
+async function updateGroupMeetingViaBackend(
+  meetingId: string,
+  organizerId: string,
+  existing: Meeting,
+  input: UpdateMeetingInput,
+): Promise<Meeting> {
+  if (existing.meetingAudience !== 'group' || !existing.groupId) {
+    throw new Error('No se puede convertir una reunión individual en grupal desde el cliente.')
+  }
+
+  if (input.meetingAudience !== 'group') {
+    throw new Error('No se puede cambiar el tipo de audiencia de una reunión grupal.')
+  }
+
+  if (input.groupId && input.groupId !== existing.groupId) {
+    throw new Error('No se puede cambiar el grupo de una reunión existente.')
+  }
+
+  const endAt = addMinutes(input.startAt, input.durationMinutes)
+  const memberSelectionMode = input.groupMemberSelectionMode === 'partial' ? 'partial' : 'all'
+  const selectedUserIds =
+    memberSelectionMode === 'partial'
+      ? collectSelectedUserIds(input.participants, organizerId)
+      : undefined
+
+  const nextParticipantIds =
+    memberSelectionMode === 'partial'
+      ? selectedUserIds || []
+      : collectSelectedUserIds(input.participants, organizerId)
+  const participantsChanged = !sameStringSet(existing.participantUserIds, nextParticipantIds)
+
+  const shouldSyncGoogle =
+    input.syncGoogle &&
+    input.meetingMode === 'video' &&
+    input.videoProvider === 'google_meet' &&
+    Boolean(existing.googleCalendarEventId)
+
+  // Always re-authorize membership server-side when editing a group meeting.
+  await groupMeetingFunctionsService.updateGroupMeetingParticipants({
+    meetingId,
+    memberSelectionMode,
+    selectedUserIds,
+    syncGoogleAttendees: shouldSyncGoogle,
+    title: input.title,
+    description: input.description,
+    startAtIso: input.startAt.toISOString(),
+    endAtIso: endAt.toISOString(),
+    timezone: input.timezone,
+  })
+
+  let meetingUrl: string | null
+  let videoProvider = input.videoProvider
+  let meetingProvider: Meeting['meetingProvider'] =
+    videoProvider === 'google_meet' ? 'google_meet' : 'none'
+
+  if (input.videoProvider === 'manual') {
+    meetingUrl = input.meetingUrl
+  } else if (input.meetingMode !== 'video') {
+    meetingUrl = null
+  } else {
+    meetingUrl = input.meetingUrl ?? existing.meetingUrl ?? existing.googleMeetUrl
+  }
+
+  if (shouldSyncGoogle) {
+    meetingUrl = existing.googleMeetUrl ?? meetingUrl
+    videoProvider = meetingUrl ? 'google_meet' : videoProvider
+    meetingProvider = meetingUrl ? 'google_meet' : meetingProvider
+  }
+
+  try {
+    // Do not write groupId / meetingAudience / participantUserIds / participants from client.
+    await updateDoc(doc(getFirebaseDb(), COLLECTIONS.meetings, meetingId), {
+      title: input.title,
+      type: input.type,
+      description: input.description,
+      notes: input.notes,
+      startAt: Timestamp.fromDate(input.startAt),
+      endAt: Timestamp.fromDate(endAt),
+      durationMinutes: input.durationMinutes,
+      timezone: input.timezone,
+      contactId: null,
+      meetingMode: input.meetingMode,
+      videoProvider,
+      meetingUrl,
+      location: input.meetingMode === 'in_person' ? input.location : null,
+      meetingProvider,
+      status: 'scheduled',
+      updatedAt: serverTimestamp(),
+      updatedBy: organizerId,
+    })
+  } catch (error) {
+    if (shouldSyncGoogle || participantsChanged) {
+      throw new Error(
+        'Los participantes se actualizaron, pero no pudimos guardar el resto de cambios.',
         { cause: error },
       )
     }

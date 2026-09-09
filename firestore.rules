@@ -3377,8 +3377,35 @@ service cloud.firestore {
           request.resource.data.meetingAudience in ['individual', 'group'];
       }
 
+      // Group meetings: membership + participantUserIds are Admin SDK / callable only.
+      // Client may create individual meetings; never meetingAudience == 'group'.
+      function isClientGroupMeetingCreate() {
+        return ('meetingAudience' in request.resource.data) &&
+          request.resource.data.meetingAudience == 'group';
+      }
+
+      function preservesGroupMeetingSecurityFields() {
+        let wasGroup = ('meetingAudience' in resource.data) &&
+          resource.data.meetingAudience == 'group';
+        let becomesGroup = ('meetingAudience' in request.resource.data) &&
+          request.resource.data.meetingAudience == 'group';
+
+        // Client cannot promote an individual/legacy meeting to group.
+        return (!becomesGroup || wasGroup) &&
+          (
+            !wasGroup ||
+            (
+              request.resource.data.meetingAudience == 'group' &&
+              request.resource.data.groupId == resource.data.groupId &&
+              request.resource.data.participantUserIds == resource.data.participantUserIds &&
+              request.resource.data.participants == resource.data.participants
+            )
+          );
+      }
+
       allow create: if isSignedIn() &&
         isEmailVerified() &&
+        !isClientGroupMeetingCreate() &&
         request.resource.data.organizerId == request.auth.uid &&
         request.resource.data.createdBy == request.auth.uid &&
         request.resource.data.updatedBy == request.auth.uid &&
@@ -3391,15 +3418,7 @@ service cloud.firestore {
         request.resource.data.durationMinutes <= 480 &&
         request.resource.data.participantUserIds is list &&
         request.resource.data.participantUserIds.size() <= 50 &&
-        meetingAudienceValid() &&
-        (
-          !('meetingAudience' in request.resource.data) ||
-          request.resource.data.meetingAudience != 'group' ||
-          (
-            request.resource.data.groupId is string &&
-            request.resource.data.groupId.size() > 0
-          )
-        );
+        meetingAudienceValid();
 
       // get: single-doc OR is fine (short-circuits; legacy organizer safe).
       allow get: if isAdmin() || isMeetingOrganizer() || isMeetingParticipant();
@@ -3417,7 +3436,8 @@ service cloud.firestore {
 
       allow update: if preservesMeetingAuditFields() &&
         isValidMeetingStatusTransition() &&
-        meetingAudienceValid() && (
+        meetingAudienceValid() &&
+        preservesGroupMeetingSecurityFields() && (
         isAdmin() ||
         (
           isMeetingOrganizer() &&

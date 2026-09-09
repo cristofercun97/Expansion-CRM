@@ -14,4 +14,6 @@ export const COLLECTIONS = {
   googleCalendarConnections: "googleCalendarConnections",
   googleOAuthStates: "googleOAuthStates",
   meetings: "meetings",
+  teams: "teams",
+  teamMembers: "teamMembers",
 } as const;

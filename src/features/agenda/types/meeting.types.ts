@@ -131,6 +131,7 @@ export type CreateMeetingInput = {
   meetingAudience: MeetingAudience
   groupId: string | null
   groupNameSnapshot: string | null
+  groupMemberSelectionMode?: GroupMemberSelectionMode
   participants: MeetingParticipant[]
   meetingMode: MeetingMode
   videoProvider: VideoProvider
@@ -151,6 +152,7 @@ export type UpdateMeetingInput = {
   meetingAudience: MeetingAudience
   groupId: string | null
   groupNameSnapshot: string | null
+  groupMemberSelectionMode?: GroupMemberSelectionMode
   participants: MeetingParticipant[]
   meetingMode: MeetingMode
   videoProvider: VideoProvider

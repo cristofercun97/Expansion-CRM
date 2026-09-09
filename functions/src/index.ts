@@ -10,6 +10,10 @@ import {
   updateGoogleCalendarEvent,
 } from "./calendar/googleCalendar.js";
 import {
+  createGroupMeeting,
+  updateGroupMeetingParticipants,
+} from "./meetings/groupMeetings.js";
+import {
   adminApproveReferralPayout,
   adminMarkReferralPayoutPaid,
   adminRejectReferralPayout,
@@ -38,4 +42,6 @@ export {
   createGoogleCalendarEvent,
   updateGoogleCalendarEvent,
   cancelGoogleCalendarEvent,
+  createGroupMeeting,
+  updateGroupMeetingParticipants,
 };

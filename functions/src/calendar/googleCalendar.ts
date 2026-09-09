@@ -173,6 +173,90 @@ function mapEventResult(event: {
   };
 }
 
+export type CalendarEventInput = {
+  title: string;
+  description: string;
+  startAtIso: string;
+  endAtIso: string;
+  timezone: string;
+  attendeeEmails: string[];
+};
+
+/** Shared helper for Agenda group meetings (organizer OAuth). */
+export async function createCalendarEventForUid(uid: string, data: CalendarEventInput) {
+  const calendar = await getAuthorizedCalendarClient(uid);
+  const requestId = randomBytes(8).toString("hex");
+
+  const response = await calendar.events.insert({
+    calendarId: "primary",
+    conferenceDataVersion: 1,
+    sendUpdates: "all",
+    requestBody: {
+      summary: data.title.trim(),
+      description: data.description?.trim() || "",
+      start: {
+        dateTime: data.startAtIso,
+        timeZone: data.timezone,
+      },
+      end: {
+        dateTime: data.endAtIso,
+        timeZone: data.timezone,
+      },
+      attendees: (data.attendeeEmails || [])
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean)
+        .map((email) => ({email})),
+      conferenceData: {
+        createRequest: {
+          requestId,
+          conferenceSolutionKey: {
+            type: "hangoutsMeet",
+          },
+        },
+      },
+    },
+  });
+
+  const mapped = mapEventResult(response.data);
+  if (!mapped.googleCalendarEventId) {
+    throw new HttpsError("internal", "Google Calendar no devolvió un ID de evento.");
+  }
+
+  return mapped;
+}
+
+/** Shared helper for Agenda group meetings (organizer OAuth). */
+export async function updateCalendarEventForUid(
+  uid: string,
+  data: CalendarEventInput & {googleCalendarEventId: string},
+) {
+  const calendar = await getAuthorizedCalendarClient(uid);
+  const response = await calendar.events.patch({
+    calendarId: "primary",
+    eventId: data.googleCalendarEventId,
+    conferenceDataVersion: 1,
+    sendUpdates: "all",
+    requestBody: {
+      summary: data.title.trim(),
+      description: data.description?.trim() || "",
+      start: {
+        dateTime: data.startAtIso,
+        timeZone: data.timezone || "UTC",
+      },
+      end: {
+        dateTime: data.endAtIso,
+        timeZone: data.timezone || "UTC",
+      },
+      attendees: (data.attendeeEmails || [])
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean)
+        .map((email) => ({email})),
+    },
+  });
+
+  return mapEventResult(response.data);
+}
+
 export const getGoogleCalendarConnectionStatus = onCall(
   {
     ...callableOptions,
@@ -321,45 +405,14 @@ export const createGoogleCalendarEvent = onCall(
       throw new HttpsError("invalid-argument", "Faltan datos para crear el evento de Calendar.");
     }
 
-    const calendar = await getAuthorizedCalendarClient(uid);
-    const requestId = randomBytes(8).toString("hex");
-
-    const response = await calendar.events.insert({
-      calendarId: "primary",
-      conferenceDataVersion: 1,
-      sendUpdates: "all",
-      requestBody: {
-        summary: data.title.trim(),
-        description: data.description?.trim() || "",
-        start: {
-          dateTime: data.startAtIso,
-          timeZone: data.timezone,
-        },
-        end: {
-          dateTime: data.endAtIso,
-          timeZone: data.timezone,
-        },
-        attendees: (data.attendeeEmails || [])
-          .map((email) => email.trim().toLowerCase())
-          .filter(Boolean)
-          .map((email) => ({email})),
-        conferenceData: {
-          createRequest: {
-            requestId,
-            conferenceSolutionKey: {
-              type: "hangoutsMeet",
-            },
-          },
-        },
-      },
+    return createCalendarEventForUid(uid, {
+      title: data.title,
+      description: data.description || "",
+      startAtIso: data.startAtIso,
+      endAtIso: data.endAtIso,
+      timezone: data.timezone,
+      attendeeEmails: data.attendeeEmails || [],
     });
-
-    const mapped = mapEventResult(response.data);
-    if (!mapped.googleCalendarEventId) {
-      throw new HttpsError("internal", "Google Calendar no devolvió un ID de evento.");
-    }
-
-    return mapped;
   },
 );
 
@@ -384,31 +437,15 @@ export const updateGoogleCalendarEvent = onCall(
       throw new HttpsError("invalid-argument", "Faltan datos para actualizar el evento de Calendar.");
     }
 
-    const calendar = await getAuthorizedCalendarClient(uid);
-    const response = await calendar.events.patch({
-      calendarId: "primary",
-      eventId: data.googleCalendarEventId,
-      conferenceDataVersion: 1,
-      sendUpdates: "all",
-      requestBody: {
-        summary: data.title.trim(),
-        description: data.description?.trim() || "",
-        start: {
-          dateTime: data.startAtIso,
-          timeZone: data.timezone || "UTC",
-        },
-        end: {
-          dateTime: data.endAtIso,
-          timeZone: data.timezone || "UTC",
-        },
-        attendees: (data.attendeeEmails || [])
-          .map((email) => email.trim().toLowerCase())
-          .filter(Boolean)
-          .map((email) => ({email})),
-      },
+    return updateCalendarEventForUid(uid, {
+      googleCalendarEventId: data.googleCalendarEventId,
+      title: data.title,
+      description: data.description || "",
+      startAtIso: data.startAtIso,
+      endAtIso: data.endAtIso,
+      timezone: data.timezone || "UTC",
+      attendeeEmails: data.attendeeEmails || [],
     });
-
-    return mapEventResult(response.data);
   },
 );
 

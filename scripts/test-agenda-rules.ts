@@ -21,6 +21,8 @@ const USER_C = 'USER_C'
 const ADMIN = 'ADMIN_USER'
 const MEETING_ID = 'meeting_ab'
 const LEGACY_MEETING_ID = 'meeting_legacy_no_participants'
+const GROUP_MEETING_ID = 'meeting_group_a'
+const USER_X = 'USER_X'
 
 function authContext(testEnv: RulesTestEnvironment, uid: string) {
   return testEnv.authenticatedContext(uid, {
@@ -34,6 +36,7 @@ async function seed(testEnv: RulesTestEnvironment) {
     await db.doc(`users/${USER_A}`).set({ role: 'usuario', email: 'a@example.com' })
     await db.doc(`users/${USER_B}`).set({ role: 'usuario', email: 'b@example.com' })
     await db.doc(`users/${USER_C}`).set({ role: 'usuario', email: 'c@example.com' })
+    await db.doc(`users/${USER_X}`).set({ role: 'usuario', email: 'x@example.com' })
     await db.doc(`users/${ADMIN}`).set({ role: 'admin', email: 'admin@example.com' })
 
     await db.doc(`meetings/${MEETING_ID}`).set({
@@ -50,6 +53,7 @@ async function seed(testEnv: RulesTestEnvironment) {
       organizerId: USER_A,
       organizerName: 'Franklin',
       contactId: null,
+      meetingAudience: 'individual',
       groupId: null,
       participants: [
         { type: 'user', userId: USER_B, name: 'Participante B', email: 'b@example.com' },
@@ -59,6 +63,39 @@ async function seed(testEnv: RulesTestEnvironment) {
       googleCalendarEventId: 'evt_original',
       googleCalendarHtmlLink: 'https://calendar.google.com/event?eid=original',
       googleMeetUrl: 'https://meet.google.com/aaa-bbbb-ccc',
+      createdAt: new Date('2026-09-01T10:00:00.000Z'),
+      updatedAt: new Date('2026-09-01T10:00:00.000Z'),
+      createdBy: USER_A,
+      updatedBy: USER_A,
+      completedAt: null,
+      cancelledAt: null,
+    })
+
+    await db.doc(`meetings/${GROUP_MEETING_ID}`).set({
+      title: 'Reunión grupo A',
+      type: 'group',
+      description: '',
+      notes: '',
+      resultNotes: '',
+      status: 'scheduled',
+      startAt: new Date('2026-09-18T17:00:00.000Z'),
+      endAt: new Date('2026-09-18T17:30:00.000Z'),
+      durationMinutes: 30,
+      timezone: 'Europe/Madrid',
+      organizerId: USER_A,
+      organizerName: 'Franklin',
+      contactId: null,
+      meetingAudience: 'group',
+      groupId: 'team_alpha',
+      groupNameSnapshot: 'Equipo Alpha',
+      participants: [
+        { type: 'user', userId: USER_B, name: 'Participante B', email: 'b@example.com' },
+      ],
+      participantUserIds: [USER_B],
+      meetingProvider: 'none',
+      googleCalendarEventId: null,
+      googleCalendarHtmlLink: null,
+      googleMeetUrl: null,
       createdAt: new Date('2026-09-01T10:00:00.000Z'),
       updatedAt: new Date('2026-09-01T10:00:00.000Z'),
       createdBy: USER_A,
@@ -337,8 +374,8 @@ async function main() {
       })
     })
 
-    // Group create
-    await assertSucceeds(
+    // Group create from client MUST fail (Admin SDK / callable only)
+    await assertFails(
       organizerDb.collection('meetings').add({
         title: 'Reunión de grupo E2E',
         type: 'group',
@@ -371,6 +408,101 @@ async function main() {
       }),
     )
 
+    // ATTACK-05 stranger client create group
+    await assertFails(
+      strangerDb.collection('meetings').add({
+        title: 'Stranger group',
+        type: 'group',
+        description: '',
+        notes: '',
+        resultNotes: '',
+        status: 'scheduled',
+        startAt: new Date('2026-09-20T17:00:00.000Z'),
+        endAt: new Date('2026-09-20T17:30:00.000Z'),
+        durationMinutes: 30,
+        timezone: 'Europe/Madrid',
+        organizerId: USER_C,
+        organizerName: 'Stranger',
+        contactId: null,
+        meetingAudience: 'group',
+        groupId: 'team_alpha',
+        groupNameSnapshot: 'Equipo Alpha',
+        participants: [{ type: 'user', userId: USER_B, name: 'B' }],
+        participantUserIds: [USER_B],
+        meetingProvider: 'none',
+        googleCalendarEventId: null,
+        googleCalendarHtmlLink: null,
+        googleMeetUrl: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: USER_C,
+        updatedBy: USER_C,
+        completedAt: null,
+        cancelledAt: null,
+      }),
+    )
+
+    const groupOrganizerDb = authContext(testEnv, USER_A).firestore()
+    const groupParticipantDb = authContext(testEnv, USER_B).firestore()
+
+    // ATTACK-03 organizer cannot tamper participantUserIds on group meeting via client
+    await assertFails(
+      groupOrganizerDb.doc(`meetings/${GROUP_MEETING_ID}`).update({
+        participantUserIds: [USER_B, USER_X],
+        participants: [
+          { type: 'user', userId: USER_B, name: 'B' },
+          { type: 'user', userId: USER_X, name: 'X' },
+        ],
+        updatedBy: USER_A,
+        updatedAt: new Date(),
+      }),
+    )
+
+    // Organizer also cannot change groupId / meetingAudience
+    await assertFails(
+      groupOrganizerDb.doc(`meetings/${GROUP_MEETING_ID}`).update({
+        groupId: 'team_other',
+        updatedBy: USER_A,
+        updatedAt: new Date(),
+      }),
+    )
+    await assertFails(
+      groupOrganizerDb.doc(`meetings/${GROUP_MEETING_ID}`).update({
+        meetingAudience: 'individual',
+        updatedBy: USER_A,
+        updatedAt: new Date(),
+      }),
+    )
+
+    // ATTACK-04 participant cannot modify participantUserIds
+    await assertFails(
+      groupParticipantDb.doc(`meetings/${GROUP_MEETING_ID}`).update({
+        participantUserIds: [USER_B, USER_X],
+        updatedBy: USER_B,
+        updatedAt: new Date(),
+      }),
+    )
+
+    // Organizer can still update non-security fields on group meeting
+    await assertSucceeds(
+      groupOrganizerDb.doc(`meetings/${GROUP_MEETING_ID}`).update({
+        title: 'Reunión grupo A (reprogramada título)',
+        notes: 'ok',
+        updatedBy: USER_A,
+        updatedAt: new Date(),
+      }),
+    )
+
+    // Promote individual → group denied
+    await assertFails(
+      organizerDb.doc(`meetings/${MEETING_ID}`).update({
+        meetingAudience: 'group',
+        groupId: 'team_alpha',
+        updatedBy: USER_A,
+        updatedAt: new Date(),
+      }),
+    )
+
     // DELETE — historical retention: only admin
     await assertFails(organizerDb.doc(`meetings/${MEETING_ID}`).delete())
     await assertFails(participantDb.doc(`meetings/${MEETING_ID}`).delete())
@@ -383,7 +515,7 @@ async function main() {
     await assertFails(organizerDb.doc('googleOAuthStates/state_test_1').get())
     await assertFails(organizerDb.doc('googleOAuthStates/state_test_1').set({ used: true }))
 
-    // Organizer can create
+    // Organizer can create individual
     await assertSucceeds(
       organizerDb.collection('meetings').add({
         title: 'Nueva reunión',
@@ -399,6 +531,7 @@ async function main() {
         organizerId: USER_A,
         organizerName: 'Franklin',
         contactId: null,
+        meetingAudience: 'individual',
         groupId: null,
         participants: [{ type: 'user', userId: USER_B, name: 'B' }],
         participantUserIds: [USER_B],
@@ -419,6 +552,8 @@ async function main() {
     console.log('Matrix: organizer R/W OK | participant R-only | stranger deny | admin R/W/D OK')
     console.log('LIST: organizerId+orderBy OK | participantUserIds array-contains+orderBy OK')
     console.log('Legacy: organizer get/list OK without participantUserIds | stranger deny')
+    console.log('Group: client create DENIED | participantUserIds/groupId/audience locked')
+    console.log('ATTACK-03 organizer tamper DENIED | ATTACK-04 participant mutate DENIED')
     console.log('Field lock: organizerId/createdBy/createdAt immutable | Google fields participant-deny')
     console.log('Collections: googleCalendarConnections DENIED | googleOAuthStates DENIED')
   } finally {

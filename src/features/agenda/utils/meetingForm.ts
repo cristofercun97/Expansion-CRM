@@ -259,6 +259,8 @@ export function toCreateMeetingInput(
     meetingAudience,
     groupId,
     groupNameSnapshot,
+    groupMemberSelectionMode:
+      meetingAudience === 'group' ? values.groupMemberSelectionMode : undefined,
     participants: values.participants.map(normalizeParticipant),
     meetingMode,
     videoProvider,
@@ -286,6 +288,7 @@ export function toUpdateMeetingInput(
     meetingAudience: createInput.meetingAudience,
     groupId: createInput.groupId,
     groupNameSnapshot: createInput.groupNameSnapshot,
+    groupMemberSelectionMode: createInput.groupMemberSelectionMode,
     participants: createInput.participants,
     meetingMode: createInput.meetingMode,
     videoProvider: createInput.videoProvider,
