@@ -54,6 +54,11 @@ export function createEmptyMeetingFormValues(
     videoLinkMethod: 'manual',
     meetingUrl: '',
     location: '',
+    recurrenceEnabled: false,
+    recurrenceFrequency: 'weekly',
+    recurrenceEndMode: 'count',
+    recurrenceCount: '4',
+    recurrenceUntilDate: '',
     ...defaults,
   }
 }
@@ -214,6 +219,19 @@ export function validateMeetingForm(values: MeetingFormValues): MeetingFormError
     }
 
     emails.add(email)
+  }
+
+  if (values.recurrenceEnabled) {
+    if (values.recurrenceEndMode === 'count') {
+      const count = Number(values.recurrenceCount)
+      if (!Number.isInteger(count) || count < 1) {
+        errors.recurrenceCount = 'Indica un número válido de reuniones.'
+      } else if (count > 52) {
+        errors.recurrenceCount = 'Máximo 52 reuniones.'
+      }
+    } else if (!values.recurrenceUntilDate) {
+      errors.recurrenceUntilDate = 'Indica la fecha de finalización.'
+    }
   }
 
   return errors

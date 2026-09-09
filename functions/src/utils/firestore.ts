@@ -14,6 +14,7 @@ export const COLLECTIONS = {
   googleCalendarConnections: "googleCalendarConnections",
   googleOAuthStates: "googleOAuthStates",
   meetings: "meetings",
+  meetingSeries: "meetingSeries",
   teams: "teams",
   teamMembers: "teamMembers",
   meetingReminders: "meetingReminders",

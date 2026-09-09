@@ -36,6 +36,7 @@ export function MeetingCard({ meeting, currentUserId, onOpen }: MeetingCardProps
         <div className="min-w-0">
           <p className="text-xs font-medium uppercase tracking-wide text-gold-light">
             {getMeetingTypeLabel(meeting.type)} · {getMeetingModeLabel(meeting)}
+            {meeting.recurrenceSeriesId ? ' · ↻ Recurrente' : ''}
           </p>
           <h3 className="mt-1 truncate text-base font-semibold text-hero-text">{meeting.title}</h3>
           {meeting.meetingAudience === 'group' && meeting.groupNameSnapshot ? (

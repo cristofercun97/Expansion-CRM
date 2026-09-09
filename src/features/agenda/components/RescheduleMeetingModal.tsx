@@ -4,6 +4,9 @@ import { Button, Input, Textarea } from '@/components/ui'
 import type { Meeting } from '@/features/agenda/types/meeting.types'
 import { ConflictAvailabilityPanel } from '@/features/agenda/components/ConflictAvailabilityPanel'
 import { meetingsService } from '@/features/agenda/services/meetings.service'
+import { recurringMeetingFunctionsService } from '@/features/agenda/services/recurring-meeting-functions.service'
+import type { RecurrenceEditScope } from '@/features/agenda/utils/recurrenceUtils'
+import { RECURRENCE_FREQUENCY_LABELS } from '@/features/agenda/utils/recurrenceUtils'
 import {
   addMinutes,
   combineLocalDateAndTime,
@@ -46,6 +49,8 @@ export function RescheduleMeetingModal({
   const [error, setError] = useState('')
   const [sourceId, setSourceId] = useState(meeting?.id ?? null)
   const [acknowledgeConflicts, setAcknowledgeConflicts] = useState(false)
+  const [editScope, setEditScope] = useState<RecurrenceEditScope>('this')
+  const isSeriesMeeting = Boolean(meeting?.recurrenceSeriesId)
 
   const conflictWindow = useMemo(() => {
     const startAt = combineLocalDateAndTime(date, time)
@@ -131,12 +136,26 @@ export function RescheduleMeetingModal({
         }
       }
 
-      const updated = await meetingsService.rescheduleMeeting(activeMeeting.id, organizerId, {
-        startAt,
-        durationMinutes: duration,
-        timezone: activeMeeting.timezone || getBrowserTimezone(),
-        reason,
-      })
+      const updated = isSeriesMeeting
+        ? await (async () => {
+            await recurringMeetingFunctionsService.editRecurringMeetingScope({
+              meetingId: activeMeeting.id,
+              scope: editScope,
+              startAtIso: startAt.toISOString(),
+              durationMinutes: duration,
+              timezone: activeMeeting.timezone || getBrowserTimezone(),
+              syncGoogle: Boolean(activeMeeting.googleCalendarEventId),
+            })
+            const next = await meetingsService.getMeetingById(activeMeeting.id)
+            if (!next) throw new Error('No pudimos cargar la reunión reprogramada.')
+            return next
+          })()
+        : await meetingsService.rescheduleMeeting(activeMeeting.id, organizerId, {
+            startAt,
+            durationMinutes: duration,
+            timezone: activeMeeting.timezone || getBrowserTimezone(),
+            reason,
+          })
       onSaved(updated)
       onClose()
     } catch (submitError) {
@@ -182,6 +201,33 @@ export function RescheduleMeetingModal({
             <X className="h-5 w-5" />
           </button>
         </div>
+
+        {isSeriesMeeting ? (
+          <div className="mt-4 space-y-2 rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-hero-text">
+            <p className="font-medium">
+              ↻ Recurrente ·{' '}
+              {activeMeeting.recurrenceFrequency
+                ? RECURRENCE_FREQUENCY_LABELS[activeMeeting.recurrenceFrequency]
+                : 'Serie'}
+            </p>
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                checked={editScope === 'this'}
+                onChange={() => setEditScope('this')}
+              />
+              Solo esta reunión
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                checked={editScope === 'this_and_future'}
+                onChange={() => setEditScope('this_and_future')}
+              />
+              Esta y las siguientes
+            </label>
+          </div>
+        ) : null}
 
         <form className="mt-5 space-y-4" onSubmit={(event) => void handleSubmit(event)}>
           <div className="grid gap-3 sm:grid-cols-2">

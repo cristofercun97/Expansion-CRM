@@ -3,6 +3,8 @@ import { Loader2, X } from 'lucide-react'
 import { Button, Textarea } from '@/components/ui'
 import type { Meeting, RecordMeetingResultInput } from '@/features/agenda/types/meeting.types'
 import { meetingsService } from '@/features/agenda/services/meetings.service'
+import { recurringMeetingFunctionsService } from '@/features/agenda/services/recurring-meeting-functions.service'
+import type { RecurrenceEditScope } from '@/features/agenda/utils/recurrenceUtils'
 
 type RecordMeetingResultModalProps = {
   meeting: Meeting | null
@@ -26,12 +28,15 @@ export function RecordMeetingResultModal({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [sourceId, setSourceId] = useState(meeting?.id ?? null)
+  const [cancelScope, setCancelScope] = useState<RecurrenceEditScope>('this')
+  const isSeriesMeeting = Boolean(meeting?.recurrenceSeriesId)
 
   if (meeting && meeting.id !== sourceId) {
     setSourceId(meeting.id)
     setOutcome('completed')
     setResultNotes('')
     setError('')
+    setCancelScope('this')
   }
 
   useEffect(() => {
@@ -68,11 +73,23 @@ export function RecordMeetingResultModal({
     setSubmitting(true)
     setError('')
     try {
-      const updated = await meetingsService.recordMeetingResult(activeMeeting.id, organizerId, {
-        outcome,
-        resultNotes,
-        cancelReason: outcome === 'cancelled' ? resultNotes : undefined,
-      })
+      const updated =
+        outcome === 'cancelled' && isSeriesMeeting
+          ? await (async () => {
+              await recurringMeetingFunctionsService.cancelRecurringMeetingScope({
+                meetingId: activeMeeting.id,
+                scope: cancelScope,
+                cancelReason: resultNotes || 'Serie cancelada',
+              })
+              const next = await meetingsService.getMeetingById(activeMeeting.id)
+              if (!next) throw new Error('No pudimos cargar la reunión cancelada.')
+              return next
+            })()
+          : await meetingsService.recordMeetingResult(activeMeeting.id, organizerId, {
+              outcome,
+              resultNotes,
+              cancelReason: outcome === 'cancelled' ? resultNotes : undefined,
+            })
       onSaved(updated)
       onClose()
       if (outcome === 'completed' && !updated.nextActionTaskId) {
@@ -144,6 +161,28 @@ export function RecordMeetingResultModal({
               </label>
             ))}
           </fieldset>
+
+          {outcome === 'cancelled' && isSeriesMeeting ? (
+            <div className="space-y-2 rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-hero-text">
+              <p className="font-medium">Alcance de cancelación</p>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  checked={cancelScope === 'this'}
+                  onChange={() => setCancelScope('this')}
+                />
+                Solo esta reunión
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  checked={cancelScope === 'this_and_future'}
+                  onChange={() => setCancelScope('this_and_future')}
+                />
+                Esta y las siguientes
+              </label>
+            </div>
+          ) : null}
 
           <Textarea
             label={

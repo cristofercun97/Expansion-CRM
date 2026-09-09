@@ -6,6 +6,7 @@ import { canManageMeeting } from '@/features/agenda/utils/meetingAccess'
 import { formatMeetingDateTimeRange } from '@/features/agenda/utils/meetingDateUtils'
 import { getMeetingStatusLabel, getMeetingTypeLabel } from '@/features/agenda/utils/meetingLabels'
 import { getMeetingJoinInfo, getMeetingModeLabel } from '@/features/agenda/utils/meetingModeUtils'
+import { RECURRENCE_FREQUENCY_LABELS } from '@/features/agenda/utils/recurrenceUtils'
 
 const PARTICIPANT_PREVIEW_LIMIT = 5
 
@@ -111,6 +112,14 @@ export function MeetingDetailModal({
               {' · '}
               {meeting.durationMinutes} min
             </p>
+            {meeting.recurrenceSeriesId ? (
+              <p className="mt-2 text-sm text-hero-text/70">
+                ↻ Recurrente
+                {meeting.recurrenceFrequency
+                  ? ` · ${RECURRENCE_FREQUENCY_LABELS[meeting.recurrenceFrequency]}`
+                  : ''}
+              </p>
+            ) : null}
             {meeting.meetingAudience === 'group' && meeting.groupNameSnapshot ? (
               <p className="mt-2 text-sm text-hero-text/70">
                 Grupo: <span className="font-medium text-hero-text">{meeting.groupNameSnapshot}</span>

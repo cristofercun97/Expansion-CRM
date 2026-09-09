@@ -449,6 +449,19 @@ export const updateGoogleCalendarEvent = onCall(
   },
 );
 
+export async function cancelCalendarEventForUid(
+  uid: string,
+  googleCalendarEventId: string,
+): Promise<{ok: true}> {
+  const calendar = await getAuthorizedCalendarClient(uid);
+  await calendar.events.delete({
+    calendarId: "primary",
+    eventId: googleCalendarEventId,
+    sendUpdates: "all",
+  });
+  return {ok: true};
+}
+
 export const cancelGoogleCalendarEvent = onCall(
   {
     ...callableOptions,
@@ -462,13 +475,7 @@ export const cancelGoogleCalendarEvent = onCall(
       throw new HttpsError("invalid-argument", "Falta el ID del evento de Calendar.");
     }
 
-    const calendar = await getAuthorizedCalendarClient(uid);
-    await calendar.events.delete({
-      calendarId: "primary",
-      eventId: data.googleCalendarEventId,
-      sendUpdates: "all",
-    });
-
+    await cancelCalendarEventForUid(uid, data.googleCalendarEventId);
     return {ok: true};
   },
 );

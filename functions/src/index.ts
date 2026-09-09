@@ -20,6 +20,11 @@ import {
 } from "./meetings/meetingReminders.js";
 import {getTeamAgenda} from "./meetings/teamAgenda.js";
 import {
+  cancelRecurringMeetingScope,
+  createRecurringMeeting,
+  editRecurringMeetingScope,
+} from "./meetings/recurringMeetings.js";
+import {
   adminApproveReferralPayout,
   adminMarkReferralPayoutPaid,
   adminRejectReferralPayout,
@@ -54,4 +59,7 @@ export {
   onMeetingWrittenSyncAgenda,
   processMeetingReminders,
   getTeamAgenda,
+  createRecurringMeeting,
+  editRecurringMeetingScope,
+  cancelRecurringMeetingScope,
 };

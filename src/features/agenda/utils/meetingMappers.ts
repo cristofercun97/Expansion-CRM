@@ -147,5 +147,17 @@ export function mapMeetingDocument(id: string, data: DocumentData): Meeting {
     resultRecordedBy: asNullableString(data.resultRecordedBy),
     resultRecordedAt: data.resultRecordedAt instanceof Timestamp ? data.resultRecordedAt : null,
     nextActionTaskId: asNullableString(data.nextActionTaskId),
+    recurrenceSeriesId: asNullableString(data.recurrenceSeriesId),
+    recurrenceIndex:
+      typeof data.recurrenceIndex === 'number' && Number.isFinite(data.recurrenceIndex)
+        ? data.recurrenceIndex
+        : null,
+    recurrenceFrequency:
+      data.recurrenceFrequency === 'weekly' ||
+      data.recurrenceFrequency === 'biweekly' ||
+      data.recurrenceFrequency === 'monthly'
+        ? data.recurrenceFrequency
+        : null,
+    seriesStartAt: data.seriesStartAt instanceof Timestamp ? data.seriesStartAt : null,
   }
 }

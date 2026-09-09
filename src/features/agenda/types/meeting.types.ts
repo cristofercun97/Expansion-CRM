@@ -97,6 +97,11 @@ export type Meeting = {
   resultRecordedAt: Timestamp | null
   /** Set when a follow-up Plan de Acción task was created from this meeting. */
   nextActionTaskId?: string | null
+  /** Present only for recurring series occurrences. */
+  recurrenceSeriesId?: string | null
+  recurrenceIndex?: number | null
+  recurrenceFrequency?: 'weekly' | 'biweekly' | 'monthly' | null
+  seriesStartAt?: Timestamp | null
 }
 
 export type MeetingFormValues = {
@@ -119,6 +124,11 @@ export type MeetingFormValues = {
   videoLinkMethod: 'manual' | 'google_meet'
   meetingUrl: string
   location: string
+  recurrenceEnabled: boolean
+  recurrenceFrequency: 'weekly' | 'biweekly' | 'monthly'
+  recurrenceEndMode: 'count' | 'until'
+  recurrenceCount: string
+  recurrenceUntilDate: string
 }
 
 export type CreateMeetingInput = {

@@ -3406,9 +3406,38 @@ service cloud.firestore {
           );
       }
 
+      function hasClientRecurrenceFields() {
+        return request.resource.data.keys().hasAny([
+          'recurrenceSeriesId',
+          'recurrenceIndex',
+          'recurrenceFrequency',
+          'seriesStartAt'
+        ]);
+      }
+
+      function preservesRecurrenceFields() {
+        let beforeHas = resource.data.keys().hasAll(['recurrenceSeriesId']) &&
+          resource.data.recurrenceSeriesId is string &&
+          resource.data.recurrenceSeriesId.size() > 0;
+        let afterHas = request.resource.data.keys().hasAll(['recurrenceSeriesId']) &&
+          request.resource.data.recurrenceSeriesId is string &&
+          request.resource.data.recurrenceSeriesId.size() > 0;
+
+        return (!beforeHas && !afterHas) ||
+          (
+            beforeHas &&
+            afterHas &&
+            request.resource.data.recurrenceSeriesId == resource.data.recurrenceSeriesId &&
+            request.resource.data.recurrenceIndex == resource.data.recurrenceIndex &&
+            request.resource.data.recurrenceFrequency == resource.data.recurrenceFrequency &&
+            request.resource.data.seriesStartAt == resource.data.seriesStartAt
+          );
+      }
+
       allow create: if isSignedIn() &&
         isEmailVerified() &&
         !isClientGroupMeetingCreate() &&
+        !hasClientRecurrenceFields() &&
         request.resource.data.organizerId == request.auth.uid &&
         request.resource.data.createdBy == request.auth.uid &&
         request.resource.data.updatedBy == request.auth.uid &&
@@ -3440,7 +3469,8 @@ service cloud.firestore {
       allow update: if preservesMeetingAuditFields() &&
         isValidMeetingStatusTransition() &&
         meetingAudienceValid() &&
-        preservesGroupMeetingSecurityFields() && (
+        preservesGroupMeetingSecurityFields() &&
+        preservesRecurrenceFields() && (
         isAdmin() ||
         (
           isMeetingOrganizer() &&
@@ -3487,6 +3517,14 @@ service cloud.firestore {
 
         allow update, delete: if false;
       }
+    }
+
+    // -------------------------------------------------------------------------
+    // meetingSeries/{seriesId}
+    // Backend-only (Cloud Functions / Admin SDK). Cliente: denegado.
+    // -------------------------------------------------------------------------
+    match /meetingSeries/{seriesId} {
+      allow read, write: if false;
     }
 
     // -------------------------------------------------------------------------

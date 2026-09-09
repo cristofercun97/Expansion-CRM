@@ -11,6 +11,7 @@ import type {
 import {
   buildMeetingFormValues,
   resolveDurationMinutes,
+  resolveVideoProvider,
   toCreateMeetingInput,
   toUpdateMeetingInput,
   validateMeetingForm,
@@ -22,10 +23,12 @@ import {
 } from '@/features/agenda/utils/meetingLabels'
 import { meetingsService } from '@/features/agenda/services/meetings.service'
 import { googleCalendarFunctionsService } from '@/features/agenda/services/google-calendar-functions.service'
+import { recurringMeetingFunctionsService } from '@/features/agenda/services/recurring-meeting-functions.service'
 import { ConflictAvailabilityPanel } from '@/features/agenda/components/ConflictAvailabilityPanel'
 import {
   addMinutes,
   combineLocalDateAndTime,
+  getBrowserTimezone,
 } from '@/features/agenda/utils/meetingDateUtils'
 import {
   assertParticipantsWithinGroup,
@@ -37,6 +40,12 @@ import {
   listAccessibleTeamsForScheduling,
   listActiveGroupMembersForScheduling,
 } from '@/features/agenda/utils/meetingGroupService'
+import {
+  createRecurrenceClientRequestId,
+  expandRecurrenceStarts,
+  RECURRENCE_FREQUENCY_LABELS,
+  type RecurrenceEditScope,
+} from '@/features/agenda/utils/recurrenceUtils'
 
 type ScheduleMeetingModalProps = {
   open: boolean
@@ -85,6 +94,10 @@ export function ScheduleMeetingModal({
   const [loadingGroups, setLoadingGroups] = useState(false)
   const [loadingGroupMembers, setLoadingGroupMembers] = useState(false)
   const [acknowledgeConflicts, setAcknowledgeConflicts] = useState(false)
+  const [seriesConflictCount, setSeriesConflictCount] = useState(0)
+  const [editScope, setEditScope] = useState<RecurrenceEditScope>('this')
+  const [recurrenceRequestId] = useState(() => createRecurrenceClientRequestId())
+  const isSeriesMeeting = Boolean(meeting?.recurrenceSeriesId)
 
   const conflictWindow = useMemo(() => {
     const startAt = combineLocalDateAndTime(values.date, values.time)
@@ -447,12 +460,85 @@ export function ScheduleMeetingModal({
           values.meetingMode === 'video' &&
           values.videoLinkMethod === 'google_meet' &&
           Boolean(meeting.googleCalendarEventId)
-        const updated = await meetingsService.updateMeeting(
-          meeting.id,
-          organizerId,
-          toUpdateMeetingInput(values, syncGoogle, organizerName),
-        )
-        onSaved(updated)
+
+        if (isSeriesMeeting) {
+          const startAt = combineLocalDateAndTime(values.date, values.time)
+          if (!startAt) throw new Error('Fecha u hora no válidas.')
+          await recurringMeetingFunctionsService.editRecurringMeetingScope({
+            meetingId: meeting.id,
+            scope: editScope,
+            title: values.title.trim(),
+            type: values.type,
+            description: values.description.trim(),
+            notes: values.notes.trim(),
+            startAtIso: startAt.toISOString(),
+            durationMinutes: resolveDurationMinutes(values),
+            timezone: getBrowserTimezone(),
+            meetingMode: values.meetingMode,
+            videoProvider: resolveVideoProvider(values),
+            meetingUrl: values.meetingUrl.trim() || null,
+            location: values.location.trim() || null,
+            syncGoogle,
+          })
+          const updated = await meetingsService.getMeetingById(meeting.id)
+          if (!updated) throw new Error('No pudimos cargar la reunión actualizada.')
+          onSaved(updated)
+        } else {
+          const updated = await meetingsService.updateMeeting(
+            meeting.id,
+            organizerId,
+            toUpdateMeetingInput(values, syncGoogle, organizerName),
+          )
+          onSaved(updated)
+        }
+      } else if (values.recurrenceEnabled) {
+        const createInput = toCreateMeetingInput(values, organizerName)
+        const starts = expandRecurrenceStarts({
+          frequency: values.recurrenceFrequency,
+          seriesStartAtMs: createInput.startAt.getTime(),
+          endMode: values.recurrenceEndMode,
+          count:
+            values.recurrenceEndMode === 'count' ? Number(values.recurrenceCount) : undefined,
+          untilAtMs:
+            values.recurrenceEndMode === 'until' && values.recurrenceUntilDate
+              ? new Date(`${values.recurrenceUntilDate}T23:59:59`).getTime()
+              : undefined,
+        })
+        let seriesConflicts = 0
+        for (const occurrence of starts) {
+          const endAt = addMinutes(new Date(occurrence.startAtMs), createInput.durationMinutes)
+          const hits = await meetingsService.findOrganizerScheduleConflicts({
+            organizerId,
+            startAt: new Date(occurrence.startAtMs),
+            endAt,
+          })
+          if (hits.length > 0) seriesConflicts += 1
+        }
+        setSeriesConflictCount(seriesConflicts)
+        if (seriesConflicts > 0 && !acknowledgeConflicts) {
+          setErrors({
+            form: `${seriesConflicts} reuniones coinciden con otros horarios. Marca “Continuar de todas formas” para crear la serie.`,
+          })
+          setSubmitting(false)
+          return
+        }
+
+        const result = await recurringMeetingFunctionsService.createRecurringMeeting({
+          ...createInput,
+          clientRequestId: recurrenceRequestId,
+          frequency: values.recurrenceFrequency,
+          endMode: values.recurrenceEndMode,
+          count:
+            values.recurrenceEndMode === 'count' ? Number(values.recurrenceCount) : undefined,
+          untilAtIso:
+            values.recurrenceEndMode === 'until' && values.recurrenceUntilDate
+              ? new Date(`${values.recurrenceUntilDate}T23:59:59`).toISOString()
+              : undefined,
+        })
+        const firstId = result.firstMeetingId || result.meetingIds[0]
+        const created = firstId ? await meetingsService.getMeetingById(firstId) : null
+        if (!created) throw new Error('Serie creada, pero no pudimos cargar la primera reunión.')
+        onSaved(created)
       } else {
         const created = await meetingsService.createMeeting(
           organizerId,
@@ -748,6 +834,124 @@ export function ScheduleMeetingModal({
             acknowledgeConflicts={acknowledgeConflicts}
             onAcknowledgeChange={setAcknowledgeConflicts}
           />
+
+          {mode === 'create' ? (
+            <div className="space-y-3 rounded-xl border border-border/70 bg-white/40 p-3">
+              <label className="block text-sm font-medium text-text-dark" htmlFor="meeting-repeat">
+                Repetir
+              </label>
+              <select
+                id="meeting-repeat"
+                className="min-h-10 w-full rounded-lg border border-border bg-white px-3 text-sm"
+                value={values.recurrenceEnabled ? values.recurrenceFrequency : 'none'}
+                onChange={(event) => {
+                  const value = event.target.value
+                  if (value === 'none') {
+                    updateField('recurrenceEnabled', false)
+                    return
+                  }
+                  updateField('recurrenceEnabled', true)
+                  updateField(
+                    'recurrenceFrequency',
+                    value as MeetingFormValues['recurrenceFrequency'],
+                  )
+                }}
+              >
+                <option value="none">No</option>
+                <option value="weekly">Cada semana</option>
+                <option value="biweekly">Cada 2 semanas</option>
+                <option value="monthly">Cada mes</option>
+              </select>
+
+              {values.recurrenceEnabled ? (
+                <>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className={`min-h-9 rounded-lg border px-3 text-xs font-medium ${
+                        values.recurrenceEndMode === 'count'
+                          ? 'border-gold bg-gold/15 text-text-dark'
+                          : 'border-border text-text-muted'
+                      }`}
+                      onClick={() => updateField('recurrenceEndMode', 'count')}
+                    >
+                      Después de N reuniones
+                    </button>
+                    <button
+                      type="button"
+                      className={`min-h-9 rounded-lg border px-3 text-xs font-medium ${
+                        values.recurrenceEndMode === 'until'
+                          ? 'border-gold bg-gold/15 text-text-dark'
+                          : 'border-border text-text-muted'
+                      }`}
+                      onClick={() => updateField('recurrenceEndMode', 'until')}
+                    >
+                      En fecha
+                    </button>
+                  </div>
+                  {values.recurrenceEndMode === 'count' ? (
+                    <div>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={52}
+                        value={values.recurrenceCount}
+                        onChange={(event) => updateField('recurrenceCount', event.target.value)}
+                        placeholder="N reuniones"
+                      />
+                      {errors.recurrenceCount ? (
+                        <p className="mt-1 text-xs text-red-600">{errors.recurrenceCount}</p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div>
+                      <Input
+                        type="date"
+                        value={values.recurrenceUntilDate}
+                        onChange={(event) => updateField('recurrenceUntilDate', event.target.value)}
+                      />
+                      {errors.recurrenceUntilDate ? (
+                        <p className="mt-1 text-xs text-red-600">{errors.recurrenceUntilDate}</p>
+                      ) : null}
+                    </div>
+                  )}
+                  {seriesConflictCount > 0 ? (
+                    <p className="text-xs text-amber-700">
+                      {seriesConflictCount} reuniones coinciden con otros horarios.
+                    </p>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+          ) : null}
+
+          {mode === 'edit' && isSeriesMeeting ? (
+            <div className="space-y-2 rounded-xl border border-border/70 bg-white/40 p-3">
+              <p className="text-sm font-medium text-text-dark">Alcance de edición</p>
+              <label className="flex items-center gap-2 text-sm text-text-dark">
+                <input
+                  type="radio"
+                  checked={editScope === 'this'}
+                  onChange={() => setEditScope('this')}
+                />
+                Solo esta reunión
+              </label>
+              <label className="flex items-center gap-2 text-sm text-text-dark">
+                <input
+                  type="radio"
+                  checked={editScope === 'this_and_future'}
+                  onChange={() => setEditScope('this_and_future')}
+                />
+                Esta y las siguientes
+              </label>
+              <p className="text-xs text-text-muted">
+                ↻ Recurrente ·{' '}
+                {meeting?.recurrenceFrequency
+                  ? RECURRENCE_FREQUENCY_LABELS[meeting.recurrenceFrequency]
+                  : 'Serie'}
+              </p>
+            </div>
+          ) : null}
 
           <div>
             <label
