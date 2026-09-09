@@ -3,8 +3,10 @@ import type {
   CreateMeetingInput,
   Meeting,
   MeetingFormValues,
+  MeetingMode,
   MeetingParticipant,
   UpdateMeetingInput,
+  VideoProvider,
 } from '@/features/agenda/types/meeting.types'
 import { MEETING_DURATION_OPTIONS } from '@/features/agenda/utils/meetingLabels'
 import {
@@ -14,6 +16,7 @@ import {
   toDateInputValue,
   toTimeInputValue,
 } from '@/features/agenda/utils/meetingDateUtils'
+import { isValidHttpsMeetingUrl } from '@/features/agenda/utils/meetingModeUtils'
 
 export type MeetingFormErrors = Partial<Record<keyof MeetingFormValues, string>> & {
   form?: string
@@ -42,8 +45,43 @@ export function createEmptyMeetingFormValues(
     customDurationMinutes: '',
     contactId: '',
     participants: [],
-    createGoogleMeet: true,
+    meetingMode: 'video',
+    videoLinkMethod: 'manual',
+    meetingUrl: '',
+    location: '',
     ...defaults,
+  }
+}
+
+function formFromMeeting(meeting: Meeting): Partial<MeetingFormValues> {
+  const start = timestampToDate(meeting.startAt) ?? new Date()
+  const isPresetDuration = (MEETING_DURATION_OPTIONS as readonly number[]).includes(
+    meeting.durationMinutes,
+  )
+
+  let videoLinkMethod: MeetingFormValues['videoLinkMethod'] = 'manual'
+  if (meeting.videoProvider === 'google_meet') {
+    videoLinkMethod = 'google_meet'
+  }
+
+  return {
+    title: meeting.title,
+    type: meeting.type,
+    description: meeting.description,
+    notes: meeting.notes,
+    date: toDateInputValue(start),
+    time: toTimeInputValue(start),
+    durationMinutes: isPresetDuration ? meeting.durationMinutes : 0,
+    customDurationMinutes: isPresetDuration ? '' : String(meeting.durationMinutes),
+    contactId: meeting.contactId ?? '',
+    participants: meeting.participants,
+    meetingMode: meeting.meetingMode,
+    videoLinkMethod,
+    meetingUrl:
+      meeting.videoProvider === 'manual'
+        ? meeting.meetingUrl ?? ''
+        : meeting.meetingUrl ?? meeting.googleMeetUrl ?? '',
+    location: meeting.location ?? '',
   }
 }
 
@@ -52,29 +90,12 @@ export function buildMeetingFormValues(options: {
   meeting?: Meeting | null
   contacts: Contact[]
   preselectedContactId?: string
-  createGoogleMeetDefault: boolean
+  preferGoogleMeetDefault: boolean
 }): MeetingFormValues {
-  const { mode, meeting, contacts, preselectedContactId, createGoogleMeetDefault } = options
+  const { mode, meeting, contacts, preselectedContactId, preferGoogleMeetDefault } = options
 
   if (mode === 'edit' && meeting) {
-    const start = timestampToDate(meeting.startAt) ?? new Date()
-    const isPresetDuration = (MEETING_DURATION_OPTIONS as readonly number[]).includes(
-      meeting.durationMinutes,
-    )
-
-    return createEmptyMeetingFormValues({
-      title: meeting.title,
-      type: meeting.type,
-      description: meeting.description,
-      notes: meeting.notes,
-      date: toDateInputValue(start),
-      time: toTimeInputValue(start),
-      durationMinutes: isPresetDuration ? meeting.durationMinutes : 0,
-      customDurationMinutes: isPresetDuration ? '' : String(meeting.durationMinutes),
-      contactId: meeting.contactId ?? '',
-      participants: meeting.participants,
-      createGoogleMeet: Boolean(meeting.googleMeetUrl || meeting.googleCalendarEventId),
-    })
+    return createEmptyMeetingFormValues(formFromMeeting(meeting))
   }
 
   const contact = contacts.find((item) => item.id === preselectedContactId)
@@ -92,7 +113,8 @@ export function buildMeetingFormValues(options: {
     contactId: preselectedContactId ?? '',
     participants,
     title: contact ? `Seguimiento con ${contact.name}` : '',
-    createGoogleMeet: createGoogleMeetDefault,
+    meetingMode: 'video',
+    videoLinkMethod: preferGoogleMeetDefault ? 'google_meet' : 'manual',
   })
 }
 
@@ -107,6 +129,13 @@ export function resolveDurationMinutes(values: MeetingFormValues): number {
 
 function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+}
+
+export function resolveVideoProvider(values: MeetingFormValues): VideoProvider {
+  if (values.meetingMode !== 'video') {
+    return 'none'
+  }
+  return values.videoLinkMethod === 'google_meet' ? 'google_meet' : 'manual'
 }
 
 export function validateMeetingForm(values: MeetingFormValues): MeetingFormErrors {
@@ -132,6 +161,15 @@ export function validateMeetingForm(values: MeetingFormValues): MeetingFormError
   const duration = resolveDurationMinutes(values)
   if (!Number.isFinite(duration) || duration < 5 || duration > 480) {
     errors.customDurationMinutes = 'La duración debe estar entre 5 y 480 minutos.'
+  }
+
+  if (values.meetingMode === 'video' && values.videoLinkMethod === 'manual') {
+    const url = values.meetingUrl.trim()
+    if (!url) {
+      errors.meetingUrl = 'Añade el enlace de la videollamada.'
+    } else if (!isValidHttpsMeetingUrl(url)) {
+      errors.meetingUrl = 'Usa una URL HTTPS válida (Meet, Zoom, Teams u otra).'
+    }
   }
 
   const emails = new Set<string>()
@@ -170,6 +208,17 @@ export function toCreateMeetingInput(
     throw new Error('Fecha u hora no válidas.')
   }
 
+  const meetingMode: MeetingMode = values.meetingMode
+  const videoProvider = resolveVideoProvider(values)
+  const meetingUrl =
+    meetingMode === 'video' && videoProvider === 'manual'
+      ? values.meetingUrl.trim()
+      : null
+  const location =
+    meetingMode === 'in_person' && values.location.trim()
+      ? values.location.trim()
+      : null
+
   return {
     title: values.title.trim(),
     type: values.type,
@@ -180,7 +229,10 @@ export function toCreateMeetingInput(
     timezone: getBrowserTimezone(),
     contactId: values.contactId.trim() || null,
     participants: values.participants.map(normalizeParticipant),
-    createGoogleMeet: values.createGoogleMeet,
+    meetingMode,
+    videoProvider,
+    meetingUrl,
+    location,
     organizerName: organizerName.trim(),
   }
 }
@@ -201,6 +253,10 @@ export function toUpdateMeetingInput(
     timezone: createInput.timezone,
     contactId: createInput.contactId,
     participants: createInput.participants,
+    meetingMode: createInput.meetingMode,
+    videoProvider: createInput.videoProvider,
+    meetingUrl: createInput.meetingUrl,
+    location: createInput.location,
     syncGoogle,
   }
 }

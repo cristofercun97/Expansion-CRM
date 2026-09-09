@@ -86,13 +86,16 @@ export function GoogleCalendarStatusCard({
   return (
     <div
       className={cn(
-        'rounded-2xl border border-white/12 bg-white/6 p-4 backdrop-blur-xl',
+        'rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 backdrop-blur-xl',
         className,
       )}
     >
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-sm font-semibold text-hero-text">Google Calendar</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-hero-text/45">
+            Integración opcional
+          </p>
+          <p className="text-sm font-medium text-hero-text">Google Calendar</p>
           {loading ? (
             <p className="mt-1 flex items-center gap-2 text-sm text-hero-text/65">
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />

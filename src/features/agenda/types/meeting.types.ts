@@ -11,8 +11,15 @@ export type MeetingType =
   | 'evaluation'
   | 'other'
 
+/** Cómo se celebra la reunión (fuente de verdad EXPANSIÓN). */
+export type MeetingMode = 'video' | 'in_person' | 'other'
+
+/** Proveedor de videollamada. `none` = sin enlace / no aplica. */
+export type VideoProvider = 'manual' | 'google_meet' | 'none'
+
 export type MeetingParticipantType = 'user' | 'contact' | 'external'
 
+/** @deprecated Prefer videoProvider. Conservado por compatibilidad. */
 export type MeetingProvider = 'google_meet' | 'none'
 
 export type MeetingParticipant = {
@@ -42,6 +49,11 @@ export type Meeting = {
   participants: MeetingParticipant[]
   /** UIDs de usuarios internos invitados (autorización; no usar email). */
   participantUserIds: string[]
+  meetingMode: MeetingMode
+  videoProvider: VideoProvider
+  meetingUrl: string | null
+  location: string | null
+  /** Compatibilidad legacy con documentos previos. */
   meetingProvider: MeetingProvider
   googleCalendarEventId: string | null
   googleCalendarHtmlLink: string | null
@@ -65,7 +77,11 @@ export type MeetingFormValues = {
   customDurationMinutes: string
   contactId: string
   participants: MeetingParticipant[]
-  createGoogleMeet: boolean
+  meetingMode: MeetingMode
+  /** Solo relevante si meetingMode === 'video' */
+  videoLinkMethod: 'manual' | 'google_meet'
+  meetingUrl: string
+  location: string
 }
 
 export type CreateMeetingInput = {
@@ -78,7 +94,10 @@ export type CreateMeetingInput = {
   timezone: string
   contactId: string | null
   participants: MeetingParticipant[]
-  createGoogleMeet: boolean
+  meetingMode: MeetingMode
+  videoProvider: VideoProvider
+  meetingUrl: string | null
+  location: string | null
   organizerName: string
 }
 
@@ -92,6 +111,10 @@ export type UpdateMeetingInput = {
   timezone: string
   contactId: string | null
   participants: MeetingParticipant[]
+  meetingMode: MeetingMode
+  videoProvider: VideoProvider
+  meetingUrl: string | null
+  location: string | null
   syncGoogle: boolean
 }
 

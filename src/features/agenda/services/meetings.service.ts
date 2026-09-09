@@ -114,9 +114,12 @@ async function createMeeting(organizerId: string, input: CreateMeetingInput): Pr
   let googleCalendarEventId: string | null = null
   let googleCalendarHtmlLink: string | null = null
   let googleMeetUrl: string | null = null
-  let meetingProvider: Meeting['meetingProvider'] = 'none'
+  let meetingUrl = input.meetingUrl
+  let videoProvider = input.videoProvider
+  let meetingProvider: Meeting['meetingProvider'] =
+    videoProvider === 'google_meet' ? 'google_meet' : 'none'
 
-  if (input.createGoogleMeet) {
+  if (input.meetingMode === 'video' && input.videoProvider === 'google_meet') {
     const googleResult = await googleCalendarFunctionsService.createGoogleCalendarEvent({
       title: input.title,
       description: input.description,
@@ -131,6 +134,8 @@ async function createMeeting(organizerId: string, input: CreateMeetingInput): Pr
     googleCalendarEventId = googleResult.googleCalendarEventId
     googleCalendarHtmlLink = googleResult.googleCalendarHtmlLink
     googleMeetUrl = googleResult.googleMeetUrl
+    meetingUrl = googleMeetUrl
+    videoProvider = googleMeetUrl ? 'google_meet' : 'none'
     meetingProvider = googleMeetUrl ? 'google_meet' : 'none'
   }
 
@@ -151,6 +156,10 @@ async function createMeeting(organizerId: string, input: CreateMeetingInput): Pr
     groupId: null,
     participants: input.participants,
     participantUserIds,
+    meetingMode: input.meetingMode,
+    videoProvider,
+    meetingUrl,
+    location: input.meetingMode === 'in_person' ? input.location : null,
     meetingProvider,
     googleCalendarEventId,
     googleCalendarHtmlLink,
@@ -197,9 +206,18 @@ async function updateMeeting(
   let googleCalendarEventId = existing.googleCalendarEventId
   let googleCalendarHtmlLink = existing.googleCalendarHtmlLink
   let googleMeetUrl = existing.googleMeetUrl
-  let meetingProvider = existing.meetingProvider
+  let meetingUrl: string | null
+  let videoProvider = input.videoProvider
+  let meetingProvider: Meeting['meetingProvider'] =
+    videoProvider === 'google_meet' ? 'google_meet' : 'none'
 
-  if (input.syncGoogle && existing.googleCalendarEventId) {
+  const shouldSyncGoogle =
+    input.syncGoogle &&
+    input.meetingMode === 'video' &&
+    input.videoProvider === 'google_meet' &&
+    Boolean(existing.googleCalendarEventId)
+
+  if (shouldSyncGoogle && existing.googleCalendarEventId) {
     const googleResult = await googleCalendarFunctionsService.updateGoogleCalendarEvent({
       googleCalendarEventId: existing.googleCalendarEventId,
       title: input.title,
@@ -215,7 +233,15 @@ async function updateMeeting(
     googleCalendarEventId = googleResult.googleCalendarEventId
     googleCalendarHtmlLink = googleResult.googleCalendarHtmlLink
     googleMeetUrl = googleResult.googleMeetUrl ?? existing.googleMeetUrl
-    meetingProvider = googleMeetUrl ? 'google_meet' : existing.meetingProvider
+    meetingUrl = googleMeetUrl
+    videoProvider = googleMeetUrl ? 'google_meet' : videoProvider
+    meetingProvider = googleMeetUrl ? 'google_meet' : meetingProvider
+  } else if (input.videoProvider === 'manual') {
+    meetingUrl = input.meetingUrl
+  } else if (input.meetingMode !== 'video') {
+    meetingUrl = null
+  } else {
+    meetingUrl = input.meetingUrl ?? existing.meetingUrl ?? existing.googleMeetUrl
   }
 
   await updateDoc(doc(getFirebaseDb(), COLLECTIONS.meetings, meetingId), {
@@ -230,6 +256,10 @@ async function updateMeeting(
     contactId: input.contactId,
     participants: input.participants,
     participantUserIds,
+    meetingMode: input.meetingMode,
+    videoProvider,
+    meetingUrl,
+    location: input.meetingMode === 'in_person' ? input.location : null,
     meetingProvider,
     googleCalendarEventId,
     googleCalendarHtmlLink,

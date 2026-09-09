@@ -6,6 +6,7 @@ import { meetingsService } from '@/features/agenda/services/meetings.service'
 import { canManageMeeting } from '@/features/agenda/utils/meetingAccess'
 import { formatMeetingDateTimeRange } from '@/features/agenda/utils/meetingDateUtils'
 import { getMeetingStatusLabel, getMeetingTypeLabel } from '@/features/agenda/utils/meetingLabels'
+import { getMeetingJoinInfo, getMeetingModeLabel } from '@/features/agenda/utils/meetingModeUtils'
 
 type MeetingDetailModalProps = {
   meeting: Meeting | null
@@ -66,6 +67,7 @@ export function MeetingDetailModal({
     isAdmin,
   })
   const isOrganizer = meeting.organizerId === currentUserId
+  const join = getMeetingJoinInfo(meeting)
 
   async function runAction(action: () => Promise<Meeting>) {
     setBusy(true)
@@ -102,7 +104,8 @@ export function MeetingDetailModal({
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-xs font-medium uppercase tracking-wide text-gold-light">
-              {getMeetingTypeLabel(meeting.type)} · {getMeetingStatusLabel(meeting.status)}
+              {getMeetingTypeLabel(meeting.type)} · {getMeetingModeLabel(meeting)} ·{' '}
+              {getMeetingStatusLabel(meeting.status)}
             </p>
             <h2 id="meeting-detail-title" className="mt-1 text-xl font-semibold text-hero-text">
               {meeting.title}
@@ -155,19 +158,26 @@ export function MeetingDetailModal({
               )}
             </ul>
           </div>
-          {meeting.googleMeetUrl ? (
+          {meeting.meetingMode === 'in_person' && meeting.location ? (
+            <p>
+              <span className="font-medium text-hero-text">Ubicación:</span> {meeting.location}
+            </p>
+          ) : null}
+          {join ? (
             <a
-              href={meeting.googleMeetUrl}
+              href={join.url}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-teal-accent/15 px-4 text-sm font-semibold text-teal-accent hover:bg-teal-accent/25"
             >
               <Video className="h-4 w-4" />
-              Entrar a la reunión
+              {join.cta}
             </a>
-          ) : (
-            <p className="text-hero-text/55">Esta reunión no tiene Google Meet.</p>
-          )}
+          ) : meeting.meetingMode === 'video' ? (
+            <p className="text-hero-text/55">Esta videollamada no tiene enlace todavía.</p>
+          ) : meeting.meetingMode === 'in_person' ? (
+            <p className="text-hero-text/55">Reunión presencial{meeting.location ? '' : '.'}</p>
+          ) : null}
         </div>
 
         {canManage && meeting.status === 'scheduled' ? (

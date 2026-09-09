@@ -5,10 +5,10 @@ import {
 import type {
   Meeting,
   MeetingParticipant,
-  MeetingProvider,
   MeetingStatus,
   MeetingType,
 } from '@/features/agenda/types/meeting.types'
+import { resolveMeetingModeFields } from '@/features/agenda/utils/meetingModeUtils'
 
 function asString(value: unknown): string {
   return typeof value === 'string' ? value : ''
@@ -74,16 +74,21 @@ function mapType(value: unknown): MeetingType {
   return 'other'
 }
 
-function mapProvider(value: unknown): MeetingProvider {
-  return value === 'google_meet' ? 'google_meet' : 'none'
-}
-
 export function mapMeetingDocument(id: string, data: DocumentData): Meeting {
   const participants = Array.isArray(data.participants)
     ? data.participants
         .map((item) => mapParticipant(item))
         .filter((item): item is MeetingParticipant => Boolean(item))
     : []
+
+  const modeFields = resolveMeetingModeFields({
+    meetingMode: data.meetingMode,
+    videoProvider: data.videoProvider,
+    meetingUrl: data.meetingUrl,
+    location: data.location,
+    meetingProvider: data.meetingProvider,
+    googleMeetUrl: data.googleMeetUrl,
+  })
 
   return {
     id,
@@ -110,7 +115,11 @@ export function mapMeetingDocument(id: string, data: DocumentData): Meeting {
           .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
           .map((value) => value.trim())
       : [],
-    meetingProvider: mapProvider(data.meetingProvider),
+    meetingMode: modeFields.meetingMode,
+    videoProvider: modeFields.videoProvider,
+    meetingUrl: modeFields.meetingUrl,
+    location: modeFields.location,
+    meetingProvider: modeFields.meetingProvider,
     googleCalendarEventId: asNullableString(data.googleCalendarEventId),
     googleCalendarHtmlLink: asNullableString(data.googleCalendarHtmlLink),
     googleMeetUrl: asNullableString(data.googleMeetUrl),

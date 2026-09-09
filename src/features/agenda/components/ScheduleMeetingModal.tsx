@@ -14,8 +14,13 @@ import {
   toUpdateMeetingInput,
   validateMeetingForm,
 } from '@/features/agenda/utils/meetingForm'
-import { MEETING_DURATION_OPTIONS, MEETING_TYPE_OPTIONS } from '@/features/agenda/utils/meetingLabels'
+import {
+  MEETING_DURATION_OPTIONS,
+  MEETING_MODE_OPTIONS,
+  MEETING_TYPE_OPTIONS,
+} from '@/features/agenda/utils/meetingLabels'
 import { meetingsService } from '@/features/agenda/services/meetings.service'
+import { googleCalendarFunctionsService } from '@/features/agenda/services/google-calendar-functions.service'
 import { teamService } from '@/features/team/services/team.service'
 import type { TeamMember } from '@/features/team/types/team.types'
 
@@ -56,9 +61,10 @@ export function ScheduleMeetingModal({
       meeting,
       contacts,
       preselectedContactId,
-      createGoogleMeetDefault: googleStatus.connected,
+      preferGoogleMeetDefault: googleStatus.connected,
     }),
   )
+  const [connectingGoogle, setConnectingGoogle] = useState(false)
   const [errors, setErrors] = useState<ReturnType<typeof validateMeetingForm>>({})
   const [submitting, setSubmitting] = useState(false)
   const [externalName, setExternalName] = useState('')
@@ -266,6 +272,14 @@ export function ScheduleMeetingModal({
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
     const nextErrors = validateMeetingForm(values)
+    if (
+      values.meetingMode === 'video' &&
+      values.videoLinkMethod === 'google_meet' &&
+      !googleStatus.connected
+    ) {
+      nextErrors.form =
+        'Conecta Google o elige un enlace manual para continuar con la videollamada.'
+    }
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length > 0) {
       return
@@ -274,10 +288,14 @@ export function ScheduleMeetingModal({
     setSubmitting(true)
     try {
       if (mode === 'edit' && meeting) {
+        const syncGoogle =
+          values.meetingMode === 'video' &&
+          values.videoLinkMethod === 'google_meet' &&
+          Boolean(meeting.googleCalendarEventId)
         const updated = await meetingsService.updateMeeting(
           meeting.id,
           organizerId,
-          toUpdateMeetingInput(values, Boolean(meeting.googleCalendarEventId), organizerName),
+          toUpdateMeetingInput(values, syncGoogle, organizerName),
         )
         onSaved(updated)
       } else {
@@ -335,13 +353,6 @@ export function ScheduleMeetingModal({
           </button>
         </div>
 
-        {!googleStatus.connected ? (
-          <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            Puedes crear la reunión interna sin Meet. Conecta Google Calendar para generar
-            automáticamente el enlace de Google Meet.
-          </div>
-        ) : null}
-
         <form className="mt-5 space-y-4" onSubmit={(event) => void handleSubmit(event)}>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-text-dark" htmlFor="meeting-title">
@@ -359,7 +370,7 @@ export function ScheduleMeetingModal({
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-1.5 block text-sm font-medium text-text-dark" htmlFor="meeting-type">
-                Tipo de reunión
+                Categoría
               </label>
               <select
                 id="meeting-type"
@@ -513,7 +524,9 @@ export function ScheduleMeetingModal({
               </>
             ) : null}
 
-            {values.createGoogleMeet && contactsWithoutEmail.length > 0 ? (
+            {values.meetingMode === 'video' &&
+            values.videoLinkMethod === 'google_meet' &&
+            contactsWithoutEmail.length > 0 ? (
               <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                 {contactsWithoutEmail.length === 1
                   ? `Este contacto (${contactsWithoutEmail[0]?.name}) no tiene email registrado y no recibirá la invitación de Google Calendar.`
@@ -565,23 +578,145 @@ export function ScheduleMeetingModal({
             </ul>
           </div>
 
-          <label className="flex items-start gap-3 rounded-xl border border-petrol-dark/10 p-3 text-sm">
-            <input
-              type="checkbox"
-              className="mt-1"
-              checked={values.createGoogleMeet}
-              disabled={!googleStatus.connected && mode === 'create'}
-              onChange={(event) => updateField('createGoogleMeet', event.target.checked)}
-            />
-            <span>
-              <span className="font-medium text-text-dark">Crear Google Meet</span>
-              <span className="mt-0.5 block text-text-soft">
-                {googleStatus.connected
-                  ? 'Se creará el evento en tu Google Calendar con enlace Meet.'
-                  : 'Disponible cuando conectes Google Calendar.'}
-              </span>
-            </span>
-          </label>
+          <div className="rounded-xl border border-petrol-dark/10 p-3 space-y-3">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-text-dark" htmlFor="meeting-mode">
+                Tipo de reunión
+              </label>
+              <select
+                id="meeting-mode"
+                value={values.meetingMode}
+                onChange={(event) =>
+                  updateField('meetingMode', event.target.value as MeetingFormValues['meetingMode'])
+                }
+                className="h-11 w-full rounded-xl border border-petrol-dark/15 bg-white px-3 text-sm text-text-dark"
+              >
+                {MEETING_MODE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {values.meetingMode === 'video' ? (
+              <div className="space-y-3">
+                <p className="text-sm font-medium text-text-dark">¿Cómo quieres realizarla?</p>
+                <div className="flex flex-col gap-2">
+                  <label className="flex items-start gap-3 rounded-lg border border-petrol-dark/10 px-3 py-2 text-sm">
+                    <input
+                      type="radio"
+                      className="mt-1"
+                      checked={values.videoLinkMethod === 'manual'}
+                      onChange={() => updateField('videoLinkMethod', 'manual')}
+                    />
+                    <span>
+                      <span className="font-medium text-text-dark">Añadir enlace manual</span>
+                      <span className="mt-0.5 block text-text-soft">
+                        Pega un enlace HTTPS (Meet, Zoom, Teams u otro).
+                      </span>
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-3 rounded-lg border border-petrol-dark/10 px-3 py-2 text-sm">
+                    <input
+                      type="radio"
+                      className="mt-1"
+                      checked={values.videoLinkMethod === 'google_meet'}
+                      onChange={() => updateField('videoLinkMethod', 'google_meet')}
+                    />
+                    <span>
+                      <span className="font-medium text-text-dark">Crear Google Meet automáticamente</span>
+                      <span className="mt-0.5 block text-text-soft">
+                        Usa tu cuenta Google conectada (opcional).
+                      </span>
+                    </span>
+                  </label>
+                </div>
+
+                {values.videoLinkMethod === 'manual' ? (
+                  <div>
+                    <label
+                      className="mb-1.5 block text-sm font-medium text-text-dark"
+                      htmlFor="meeting-url"
+                    >
+                      Enlace de videollamada
+                    </label>
+                    <Input
+                      id="meeting-url"
+                      type="url"
+                      value={values.meetingUrl}
+                      onChange={(event) => updateField('meetingUrl', event.target.value)}
+                      placeholder="https://meet.google.com/..."
+                    />
+                    {errors.meetingUrl ? (
+                      <p className="mt-1 text-xs text-red-600">{errors.meetingUrl}</p>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {values.videoLinkMethod === 'google_meet' && !googleStatus.connected ? (
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-50 px-3 py-2 text-sm text-amber-900 space-y-2">
+                    <p>Conecta tu cuenta de Google para crear automáticamente el enlace de Meet.</p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={connectingGoogle || !googleStatus.configured}
+                        onClick={() => {
+                          setConnectingGoogle(true)
+                          void googleCalendarFunctionsService
+                            .getConnectUrl()
+                            .then((url) => {
+                              window.location.assign(url)
+                            })
+                            .catch(() => {
+                              setConnectingGoogle(false)
+                              setErrors((current) => ({
+                                ...current,
+                                form: 'No pudimos iniciar la conexión con Google.',
+                              }))
+                            })
+                        }}
+                      >
+                        Conectar Google
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => updateField('videoLinkMethod', 'manual')}
+                      >
+                        Usar enlace manual
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {values.videoLinkMethod === 'google_meet' && googleStatus.connected ? (
+                  <p className="text-xs text-text-soft">
+                    Se creará el evento en tu Google Calendar y se generará el enlace Meet.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {values.meetingMode === 'in_person' ? (
+              <div>
+                <label
+                  className="mb-1.5 block text-sm font-medium text-text-dark"
+                  htmlFor="meeting-location"
+                >
+                  Ubicación (opcional)
+                </label>
+                <Input
+                  id="meeting-location"
+                  value={values.location}
+                  onChange={(event) => updateField('location', event.target.value)}
+                  placeholder="Oficina, café, dirección..."
+                />
+              </div>
+            ) : null}
+          </div>
 
           {errors.form ? (
             <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">

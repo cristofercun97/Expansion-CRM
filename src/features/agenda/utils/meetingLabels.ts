@@ -23,6 +23,12 @@ export const MEETING_STATUS_LABELS: Record<MeetingStatus, string> = {
   rescheduled: 'Reprogramada',
 }
 
+export const MEETING_MODE_OPTIONS = [
+  { value: 'video' as const, label: 'Videollamada' },
+  { value: 'in_person' as const, label: 'Presencial' },
+  { value: 'other' as const, label: 'Otro' },
+]
+
 export function getMeetingTypeLabel(type: MeetingType): string {
   return MEETING_TYPE_OPTIONS.find((option) => option.value === type)?.label ?? 'Otro'
 }

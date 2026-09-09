@@ -1,4 +1,4 @@
-import { CalendarClock, Users, Video } from 'lucide-react'
+import { CalendarClock, MapPin, Users, Video } from 'lucide-react'
 import { Button } from '@/components/ui'
 import type { Meeting } from '@/features/agenda/types/meeting.types'
 import {
@@ -7,6 +7,7 @@ import {
   timestampToDate,
 } from '@/features/agenda/utils/meetingDateUtils'
 import { getMeetingStatusLabel, getMeetingTypeLabel } from '@/features/agenda/utils/meetingLabels'
+import { getMeetingJoinInfo, getMeetingModeLabel } from '@/features/agenda/utils/meetingModeUtils'
 import { cn } from '@/lib/utils'
 
 type MeetingCardProps = {
@@ -22,6 +23,7 @@ export function MeetingCard({ meeting, currentUserId, onOpen }: MeetingCardProps
     .map((participant) => participant.name)
     .join(', ')
   const isOrganizer = meeting.organizerId === currentUserId
+  const join = getMeetingJoinInfo(meeting)
 
   return (
     <article
@@ -33,7 +35,7 @@ export function MeetingCard({ meeting, currentUserId, onOpen }: MeetingCardProps
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-medium uppercase tracking-wide text-gold-light">
-            {getMeetingTypeLabel(meeting.type)}
+            {getMeetingTypeLabel(meeting.type)} · {getMeetingModeLabel(meeting)}
           </p>
           <h3 className="mt-1 truncate text-base font-semibold text-hero-text">{meeting.title}</h3>
           {!isOrganizer ? (
@@ -54,6 +56,12 @@ export function MeetingCard({ meeting, currentUserId, onOpen }: MeetingCardProps
             {formatMeetingDate(start)} · {formatMeetingTime(start)} · {meeting.durationMinutes} min
           </span>
         </p>
+        {meeting.meetingMode === 'in_person' && meeting.location ? (
+          <p className="flex items-center gap-2">
+            <MapPin className="h-4 w-4 text-teal-accent" aria-hidden="true" />
+            <span className="truncate">{meeting.location}</span>
+          </p>
+        ) : null}
         {participantNames ? (
           <p className="flex items-center gap-2">
             <Users className="h-4 w-4 text-teal-accent" aria-hidden="true" />
@@ -72,15 +80,15 @@ export function MeetingCard({ meeting, currentUserId, onOpen }: MeetingCardProps
         >
           Ver detalle
         </Button>
-        {meeting.googleMeetUrl && meeting.status === 'scheduled' ? (
+        {join && meeting.status === 'scheduled' ? (
           <a
-            href={meeting.googleMeetUrl}
+            href={join.url}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-teal-accent/15 px-3 text-sm font-medium text-teal-accent transition-colors hover:bg-teal-accent/25"
           >
             <Video className="h-4 w-4" aria-hidden="true" />
-            Entrar a Meet
+            {join.cta}
           </a>
         ) : null}
       </div>
