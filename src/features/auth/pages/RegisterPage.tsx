@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-r
 import { Button, Input } from '@/components/ui'
 import { useToast } from '@/components/ui/toast/ToastProvider'
 import { TERMS_AND_CONDITIONS_URL } from '@/config/legal'
+import { InvitationOnboardingModal } from '@/features/auth/components/InvitationOnboardingModal'
 import { RegisterInviteCard } from '@/features/auth/components/RegisterInviteCard'
 import { RegisterRecommendationCard } from '@/features/auth/components/RegisterRecommendationCard'
 import { authInputClassName, authLabelClassName, AuthCard } from '@/features/auth/components/AuthCard'
@@ -11,6 +12,7 @@ import { AuthLayout } from '@/features/auth/components/AuthLayout'
 import { GoogleAuthButton } from '@/features/auth/components/GoogleAuthButton'
 import { PasswordInput } from '@/features/auth/components/PasswordInput'
 import { useAuth } from '@/features/auth/hooks/useAuth'
+import { useInvitationOnboarding } from '@/features/auth/hooks/useInvitationOnboarding'
 import { getPostAuthRedirect } from '@/features/auth/utils/getDashboardPathByRole'
 import { useInviteValidation } from '@/features/team/hooks/useInviteValidation'
 import { useRecommendationValidation } from '@/features/referrals/hooks/useRecommendationValidation'
@@ -80,6 +82,14 @@ export function RegisterPage() {
     : undefined
 
   const isValidatingLinks = inviteValidation.loading || recommendationValidation.loading
+  const invitationOnboarding = useInvitationOnboarding({
+    enabled: initialized && !currentUser && !isValidatingLinks,
+    inviteValid: inviteValidation.isValid,
+    inviteCode: inviteValidation.inviteCode,
+    teamName: inviteValidation.team?.name,
+    recommendationValid: recommendationValidation.isValid,
+    recommendationCode: recommendationValidation.recommendationCode,
+  })
 
   if (initialized && currentUser) {
     return <Navigate to={getPostAuthRedirect(isEmailVerified, appUser?.role)} replace />
@@ -167,6 +177,15 @@ export function RegisterPage() {
 
   return (
     <AuthLayout>
+      <InvitationOnboardingModal
+        key={invitationOnboarding.instanceKey}
+        open={invitationOnboarding.open}
+        type={invitationOnboarding.type}
+        teamName={invitationOnboarding.teamName}
+        onComplete={invitationOnboarding.complete}
+        onSkip={invitationOnboarding.skip}
+      />
+
       <AuthCard>
         <div className="space-y-4 text-center sm:text-left">
           <div className="space-y-2">
