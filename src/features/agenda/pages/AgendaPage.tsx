@@ -11,8 +11,10 @@ import { RecordMeetingResultModal } from '@/features/agenda/components/RecordMee
 import { RescheduleMeetingModal } from '@/features/agenda/components/RescheduleMeetingModal'
 import { ScheduleMeetingModal } from '@/features/agenda/components/ScheduleMeetingModal'
 import { TeamBusySlotCard } from '@/features/agenda/components/TeamBusySlotCard'
+import { AgendaMetricsPanel } from '@/features/agenda/components/AgendaMetricsPanel'
 import { useMeetings } from '@/features/agenda/hooks/useMeetings'
 import { useTeamAgenda } from '@/features/agenda/hooks/useTeamAgenda'
+import { useAgendaMetrics } from '@/features/agenda/hooks/useAgendaMetrics'
 import type { TeamAgendaSlot } from '@/features/agenda/services/team-agenda-functions.service'
 import type {
   GoogleCalendarConnectionStatus,
@@ -119,6 +121,13 @@ export function AgendaPage() {
 
   const isTeamScope = agendaScope === 'team' && Boolean(ownedTeamId)
   const canShowTeamScope = Boolean(ownedTeamId)
+  const [metricsScope, setMetricsScope] = useState<'mine' | 'team'>('mine')
+  const metrics = useAgendaMetrics({
+    uid: currentUserId || null,
+    ownedTeamId,
+    scope: metricsScope === 'team' && ownedTeamId ? 'team' : 'mine',
+    enabled: Boolean(currentUserId),
+  })
   const teamQueryRange = useMemo(() => {
     if (effectiveViewMode === 'month') {
       return { rangeStart: startOfMonth(anchorDate), rangeEnd: endOfMonth(anchorDate) }
@@ -648,6 +657,25 @@ export function AgendaPage() {
           </p>
         </div>
       </div>
+
+      <AgendaMetricsPanel
+        canShowTeam={canShowTeamScope}
+        metricsScope={metricsScope === 'team' && canShowTeamScope ? 'team' : 'mine'}
+        onMetricsScopeChange={setMetricsScope}
+        preset={metrics.preset}
+        onPresetChange={metrics.setPreset}
+        collapsed={metrics.collapsed}
+        onCollapsedChange={metrics.setCollapsed}
+        loading={metrics.loading}
+        error={metrics.error}
+        personalKpis={metrics.personalKpis}
+        upcoming={metrics.upcoming}
+        teamMembers={metrics.teamMembers}
+        onOpenMeeting={(meetingId) => {
+          const found = meetings.find((item) => item.id === meetingId)
+          if (found) setSelectedMeeting(found)
+        }}
+      />
 
       {!isTeamScope ? (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">

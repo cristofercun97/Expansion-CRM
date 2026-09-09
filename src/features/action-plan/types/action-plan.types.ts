@@ -24,6 +24,8 @@ export type ActionTask = {
   responsibleUid?: string | null
   responsibleName?: string | null
   startDate?: string | null
+  source?: string | null
+  sourceMeetingId?: string | null
   createdAt: Timestamp | null
   updatedAt: Timestamp | null
 }

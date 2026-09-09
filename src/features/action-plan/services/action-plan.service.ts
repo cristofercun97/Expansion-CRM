@@ -82,6 +82,8 @@ function mapActionTaskDocument(id: string, data: DocumentData): ActionTask {
     responsibleUid: mapOptionalString(data.responsibleUid),
     responsibleName: mapOptionalString(data.responsibleName),
     startDate: mapOptionalDate(data.startDate),
+    source: mapOptionalString(data.source),
+    sourceMeetingId: mapOptionalString(data.sourceMeetingId),
     createdAt: data.createdAt ?? null,
     updatedAt: data.updatedAt ?? null,
   }

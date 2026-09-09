@@ -19,6 +19,7 @@ import {
   processMeetingReminders,
 } from "./meetings/meetingReminders.js";
 import {getTeamAgenda} from "./meetings/teamAgenda.js";
+import {getTeamAgendaMetrics} from "./meetings/teamAgendaMetrics.js";
 import {
   cancelRecurringMeetingScope,
   createRecurringMeeting,
@@ -59,6 +60,7 @@ export {
   onMeetingWrittenSyncAgenda,
   processMeetingReminders,
   getTeamAgenda,
+  getTeamAgendaMetrics,
   createRecurringMeeting,
   editRecurringMeetingScope,
   cancelRecurringMeetingScope,
