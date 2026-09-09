@@ -3345,9 +3345,13 @@ service cloud.firestore {
           resource.data.organizerId == request.auth.uid;
       }
 
+      // Guard missing field on get (legacy docs). Do NOT use this helper for list:
+      // `'participantUserIds' in resource.data` / Map.get defaults break array-contains
+      // query proofs and yield permission-denied on production Agenda QUERY B.
       function isMeetingParticipant() {
         return isSignedIn() &&
           isEmailVerified() &&
+          resource.data.keys().hasAll(['participantUserIds']) &&
           resource.data.participantUserIds is list &&
           request.auth.uid in resource.data.participantUserIds;
       }
@@ -3373,7 +3377,19 @@ service cloud.firestore {
         request.resource.data.participantUserIds is list &&
         request.resource.data.participantUserIds.size() <= 50;
 
-      allow read: if isAdmin() || isMeetingOrganizer() || isMeetingParticipant();
+      // get: single-doc OR is fine (short-circuits; legacy organizer safe).
+      allow get: if isAdmin() || isMeetingOrganizer() || isMeetingParticipant();
+
+      // list: MUST be separate allows with direct field access matching each query.
+      // Combined OR / keys()/Map.get on unconstrained fields → evaluation error or
+      // false proof → permission-denied on participantUserIds array-contains queries.
+      allow list: if isSignedIn() &&
+        isEmailVerified() &&
+        resource.data.organizerId == request.auth.uid;
+      allow list: if isSignedIn() &&
+        isEmailVerified() &&
+        request.auth.uid in resource.data.participantUserIds;
+      allow list: if isAdmin();
 
       allow update: if preservesMeetingAuditFields() && (
         isAdmin() ||

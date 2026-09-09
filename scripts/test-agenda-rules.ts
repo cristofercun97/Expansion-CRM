@@ -20,6 +20,7 @@ const USER_B = 'USER_B'
 const USER_C = 'USER_C'
 const ADMIN = 'ADMIN_USER'
 const MEETING_ID = 'meeting_ab'
+const LEGACY_MEETING_ID = 'meeting_legacy_no_participants'
 
 function authContext(testEnv: RulesTestEnvironment, uid: string) {
   return testEnv.authenticatedContext(uid, {
@@ -66,6 +67,35 @@ async function seed(testEnv: RulesTestEnvironment) {
       cancelledAt: null,
     })
 
+    // Legacy meeting: no participantUserIds field
+    await db.doc(`meetings/${LEGACY_MEETING_ID}`).set({
+      title: 'Legacy sin participantUserIds',
+      type: 'follow_up',
+      description: '',
+      notes: '',
+      resultNotes: '',
+      status: 'scheduled',
+      startAt: new Date('2026-09-14T17:00:00.000Z'),
+      endAt: new Date('2026-09-14T17:30:00.000Z'),
+      durationMinutes: 30,
+      timezone: 'Europe/Madrid',
+      organizerId: USER_A,
+      organizerName: 'Franklin',
+      contactId: null,
+      groupId: null,
+      participants: [],
+      meetingProvider: 'none',
+      googleCalendarEventId: null,
+      googleCalendarHtmlLink: null,
+      googleMeetUrl: null,
+      createdAt: new Date('2026-08-01T10:00:00.000Z'),
+      updatedAt: new Date('2026-08-01T10:00:00.000Z'),
+      createdBy: USER_A,
+      updatedBy: USER_A,
+      completedAt: null,
+      cancelledAt: null,
+    })
+
     await db.doc(`googleCalendarConnections/${USER_A}`).set({
       email: 'a@example.com',
       refreshToken: 'secret-refresh',
@@ -99,11 +129,53 @@ async function main() {
     const strangerDb = authContext(testEnv, USER_C).firestore()
     const adminDb = authContext(testEnv, ADMIN).firestore()
 
-    // READ matrix
+    // READ matrix (get)
     await assertSucceeds(organizerDb.doc(`meetings/${MEETING_ID}`).get())
     await assertSucceeds(participantDb.doc(`meetings/${MEETING_ID}`).get())
     await assertFails(strangerDb.doc(`meetings/${MEETING_ID}`).get())
     await assertSucceeds(adminDb.doc(`meetings/${MEETING_ID}`).get())
+
+    // LIST queries — production Agenda path (must not OR-evaluate unrelated fields)
+    await assertSucceeds(
+      organizerDb
+        .collection('meetings')
+        .where('organizerId', '==', USER_A)
+        .orderBy('startAt', 'asc')
+        .get(),
+    )
+    await assertSucceeds(
+      participantDb
+        .collection('meetings')
+        .where('participantUserIds', 'array-contains', USER_B)
+        .orderBy('startAt', 'asc')
+        .get(),
+    )
+    await assertFails(
+      strangerDb
+        .collection('meetings')
+        .where('organizerId', '==', USER_A)
+        .orderBy('startAt', 'asc')
+        .get(),
+    )
+    // Empty result still allowed when constraint matches participant rule
+    await assertSucceeds(
+      strangerDb
+        .collection('meetings')
+        .where('participantUserIds', 'array-contains', USER_C)
+        .orderBy('startAt', 'asc')
+        .get(),
+    )
+
+    // Legacy without participantUserIds: organizer can get + list; stranger denied
+    await assertSucceeds(organizerDb.doc(`meetings/${LEGACY_MEETING_ID}`).get())
+    await assertFails(strangerDb.doc(`meetings/${LEGACY_MEETING_ID}`).get())
+    await assertSucceeds(
+      organizerDb
+        .collection('meetings')
+        .where('organizerId', '==', USER_A)
+        .orderBy('startAt', 'asc')
+        .get(),
+    )
 
     // UPDATE matrix
     await assertSucceeds(
@@ -246,6 +318,8 @@ async function main() {
 
     console.log('Agenda Firestore rules tests: PASS')
     console.log('Matrix: organizer R/W OK | participant R-only | stranger deny | admin R/W/D OK')
+    console.log('LIST: organizerId+orderBy OK | participantUserIds array-contains+orderBy OK')
+    console.log('Legacy: organizer get/list OK without participantUserIds | stranger deny')
     console.log('Field lock: organizerId/createdBy/createdAt immutable | Google fields participant-deny')
     console.log('Collections: googleCalendarConnections DENIED | googleOAuthStates DENIED')
   } finally {

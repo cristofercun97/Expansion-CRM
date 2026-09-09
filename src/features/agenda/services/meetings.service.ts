@@ -1,3 +1,4 @@
+import { FirebaseError } from 'firebase/app'
 import {
   Timestamp,
   addDoc,
@@ -10,6 +11,7 @@ import {
   serverTimestamp,
   updateDoc,
   where,
+  type QuerySnapshot,
 } from 'firebase/firestore'
 import type {
   CreateMeetingInput,
@@ -24,6 +26,26 @@ import { googleCalendarFunctionsService } from '@/features/agenda/services/googl
 import { leadActivitiesService } from '@/services/lead-activities.service'
 import { COLLECTIONS, getFirebaseDb } from '@/lib/firebase'
 
+type AgendaListQueryType = 'organizer' | 'participant'
+
+export class AgendaMeetingsQueryError extends Error {
+  readonly code: string
+  readonly queryType: AgendaListQueryType
+  readonly collectionName = COLLECTIONS.meetings
+
+  constructor(queryType: AgendaListQueryType, cause: unknown) {
+    const firebaseError = cause instanceof FirebaseError ? cause : null
+    const code = firebaseError?.code ?? 'unknown'
+    super(
+      firebaseError?.message ??
+        (cause instanceof Error ? cause.message : 'No pudimos cargar tus reuniones.'),
+    )
+    this.name = 'AgendaMeetingsQueryError'
+    this.code = code
+    this.queryType = queryType
+  }
+}
+
 function sortMeetingsByStartAt(meetings: Meeting[]): Meeting[] {
   return [...meetings].sort((left, right) => {
     const leftMs = left.startAt?.toMillis?.() ?? 0
@@ -32,11 +54,29 @@ function sortMeetingsByStartAt(meetings: Meeting[]): Meeting[] {
   })
 }
 
+async function runMeetingsListQuery(
+  queryType: AgendaListQueryType,
+  run: () => Promise<QuerySnapshot>,
+): Promise<QuerySnapshot> {
+  try {
+    return await run()
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      const code = error instanceof FirebaseError ? error.code : 'unknown'
+      console.info('[Agenda query]', { queryType, code, collection: COLLECTIONS.meetings })
+    }
+    throw new AgendaMeetingsQueryError(queryType, error)
+  }
+}
+
 async function listMeetingsForUser(uid: string): Promise<Meeting[]> {
   const meetingsRef = collection(getFirebaseDb(), COLLECTIONS.meetings)
 
-  const [organizedSnapshot, participatingSnapshot] = await Promise.all([
+  // Run sequentially so a single failing query is identifiable (not masked by Promise.all).
+  const organizedSnapshot = await runMeetingsListQuery('organizer', () =>
     getDocs(query(meetingsRef, where('organizerId', '==', uid), orderBy('startAt', 'asc'))),
+  )
+  const participatingSnapshot = await runMeetingsListQuery('participant', () =>
     getDocs(
       query(
         meetingsRef,
@@ -44,7 +84,7 @@ async function listMeetingsForUser(uid: string): Promise<Meeting[]> {
         orderBy('startAt', 'asc'),
       ),
     ),
-  ])
+  )
 
   const byId = new Map<string, Meeting>()
 
@@ -362,3 +402,5 @@ export const meetingsService = {
   cancelMeeting,
   completeMeeting,
 }
+
+export type { AgendaListQueryType }

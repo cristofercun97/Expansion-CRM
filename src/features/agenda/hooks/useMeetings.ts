@@ -1,7 +1,35 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Meeting } from '@/features/agenda/types/meeting.types'
-import { meetingsService } from '@/features/agenda/services/meetings.service'
+import {
+  AgendaMeetingsQueryError,
+  meetingsService,
+} from '@/features/agenda/services/meetings.service'
 import { useAuth } from '@/features/auth/hooks/useAuth'
+
+function resolveMeetingsLoadError(loadError: unknown): string {
+  if (loadError instanceof AgendaMeetingsQueryError) {
+    if (loadError.code === 'permission-denied') {
+      return `No tienes permiso para listar reuniones (${loadError.queryType}).`
+    }
+    if (
+      loadError.code === 'unavailable' ||
+      loadError.code === 'deadline-exceeded' ||
+      loadError.code === 'cancelled'
+    ) {
+      return 'No pudimos conectar con Firestore. Revisa red o bloqueadores del navegador.'
+    }
+    if (loadError.code === 'failed-precondition') {
+      return 'Falta un índice de Firestore para Agenda. Contacta soporte.'
+    }
+    return loadError.message || 'No pudimos cargar tus reuniones.'
+  }
+
+  if (loadError instanceof Error && loadError.message.trim()) {
+    return loadError.message
+  }
+
+  return 'No pudimos cargar tus reuniones.'
+}
 
 export function useMeetings() {
   const { appUser } = useAuth()
@@ -31,11 +59,7 @@ export function useMeetings() {
       setMeetings(items)
     } catch (loadError) {
       setMeetings([])
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : 'No pudimos cargar tus reuniones.',
-      )
+      setError(resolveMeetingsLoadError(loadError))
     } finally {
       setLoading(false)
     }
