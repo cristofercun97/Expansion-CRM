@@ -10,7 +10,10 @@ import { CreateMeetingNextActionModal } from '@/features/agenda/components/Creat
 import { RecordMeetingResultModal } from '@/features/agenda/components/RecordMeetingResultModal'
 import { RescheduleMeetingModal } from '@/features/agenda/components/RescheduleMeetingModal'
 import { ScheduleMeetingModal } from '@/features/agenda/components/ScheduleMeetingModal'
+import { TeamBusySlotCard } from '@/features/agenda/components/TeamBusySlotCard'
 import { useMeetings } from '@/features/agenda/hooks/useMeetings'
+import { useTeamAgenda } from '@/features/agenda/hooks/useTeamAgenda'
+import type { TeamAgendaSlot } from '@/features/agenda/services/team-agenda-functions.service'
 import type {
   GoogleCalendarConnectionStatus,
   Meeting,
@@ -21,7 +24,6 @@ import type {
 import {
   EMPTY_ADVANCED_FILTERS,
   applyAdvancedFilters,
-  filterTeamVisibleMeetings,
   formatViewRangeLabel,
   getViewRange,
   shiftAnchor,
@@ -34,6 +36,7 @@ import {
 } from '@/features/agenda/utils/agendaViewPrefs'
 import {
   addDays,
+  endOfMonth,
   getMonthCalendarDays,
   isSameDay,
   startOfDay,
@@ -44,6 +47,7 @@ import {
 import { contactsService } from '@/features/contacts/services/contacts.service'
 import type { Contact } from '@/features/contacts/types/contact.types'
 import { listAccessibleTeamsForScheduling } from '@/features/agenda/utils/meetingGroupService'
+import { teamService } from '@/features/team/services/team.service'
 import { cn } from '@/lib/utils'
 
 const VIEW_OPTIONS: Array<{ id: AgendaCalendarView; label: string; mobilePriority?: boolean }> = [
@@ -80,17 +84,13 @@ export function AgendaPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [viewMode, setViewMode] = useState<AgendaCalendarView>(() => loadAgendaViewPreference('list'))
   const [anchorDate, setAnchorDate] = useState(() => startOfDay(new Date()))
-  const queryRange = useMemo(() => getViewRange(viewMode, anchorDate), [viewMode, anchorDate])
-  const { meetings, loading, error, reload, organizerId, currentUserId, isAdmin, organizerName, ownedTeamId } =
-    useMeetings(queryRange)
-
+  const [agendaScope, setAgendaScope] = useState<'mine' | 'team'>('mine')
+  const [teamMemberFilter, setTeamMemberFilter] = useState<string>('all')
+  const [teamRoster, setTeamRoster] = useState<Array<{ uid: string; name: string }>>([])
   const [contacts, setContacts] = useState<Contact[]>([])
   const [filters, setFilters] = useState<AgendaAdvancedFilters>(EMPTY_ADVANCED_FILTERS)
   const [filtersOpen, setFiltersOpen] = useState(false)
-  const [agendaScope, setAgendaScope] = useState<'mine' | 'team'>('mine')
-  const [teamMemberFilter, setTeamMemberFilter] = useState<string>('all')
   const [accessibleGroups, setAccessibleGroups] = useState<Array<{ id: string; name: string }>>([])
-
   const [scheduleOpen, setScheduleOpen] = useState(false)
   const [scheduleMode, setScheduleMode] = useState<'create' | 'edit'>('create')
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null)
@@ -108,8 +108,38 @@ export function AgendaPage() {
     configured: false,
   })
 
+  const effectiveViewMode: AgendaCalendarView =
+    agendaScope === 'team' && viewMode === 'list' ? 'day' : viewMode
+  const queryRange = useMemo(
+    () => getViewRange(effectiveViewMode, anchorDate),
+    [effectiveViewMode, anchorDate],
+  )
+  const { meetings, loading, error, reload, organizerId, currentUserId, isAdmin, organizerName, ownedTeamId } =
+    useMeetings(queryRange)
+
+  const isTeamScope = agendaScope === 'team' && Boolean(ownedTeamId)
   const canShowTeamScope = Boolean(ownedTeamId)
-  const rangeLabel = formatViewRangeLabel(viewMode, anchorDate)
+  const teamQueryRange = useMemo(() => {
+    if (effectiveViewMode === 'month') {
+      return { rangeStart: startOfMonth(anchorDate), rangeEnd: endOfMonth(anchorDate) }
+    }
+    return queryRange
+  }, [effectiveViewMode, anchorDate, queryRange])
+  const teamQueryMemberUid = teamMemberFilter === 'all' ? null : teamMemberFilter
+  const {
+    slots: teamSlots,
+    loading: teamLoading,
+    error: teamError,
+    reload: reloadTeamAgenda,
+  } = useTeamAgenda({
+    enabled: isTeamScope,
+    teamId: ownedTeamId,
+    rangeStart: teamQueryRange.rangeStart,
+    rangeEnd: teamQueryRange.rangeEnd,
+    memberUid: teamQueryMemberUid,
+  })
+
+  const rangeLabel = formatViewRangeLabel(effectiveViewMode, anchorDate)
 
   const handleGoogleStatusChange = useCallback((status: GoogleCalendarConnectionStatus) => {
     setGoogleStatus(status)
@@ -167,21 +197,29 @@ export function AgendaPage() {
       .catch(() => setAccessibleGroups([]))
   }, [organizerId])
 
-  const teamMembers = useMemo(() => {
-    if (agendaScope !== 'team' || !ownedTeamId) return []
-    const byUid = new Map<string, string>()
-    for (const meeting of filterTeamVisibleMeetings(meetings, ownedTeamId)) {
-      if (meeting.organizerId) {
-        byUid.set(meeting.organizerId, meeting.organizerName || meeting.organizerId)
-      }
-      for (const participant of meeting.participants || []) {
-        if (participant.userId) {
-          byUid.set(participant.userId, participant.name || participant.userId)
-        }
-      }
+  useEffect(() => {
+    if (!isTeamScope || !ownedTeamId || !currentUserId) return
+    let cancelled = false
+    void teamService
+      .getTeamMembersByTeamId(ownedTeamId, currentUserId)
+      .then((members) => {
+        if (cancelled) return
+        setTeamRoster(
+          members
+            .filter((member) => member.status === 'active')
+            .map((member) => ({
+              uid: member.memberUid,
+              name: member.memberName?.trim() || member.memberEmail?.trim() || 'Miembro',
+            })),
+        )
+      })
+      .catch(() => {
+        if (!cancelled) setTeamRoster([])
+      })
+    return () => {
+      cancelled = true
     }
-    return [...byUid.entries()].map(([uid, name]) => ({ uid, name }))
-  }, [agendaScope, meetings, ownedTeamId])
+  }, [isTeamScope, ownedTeamId, currentUserId])
 
   useEffect(() => {
     const googleParam = searchParams.get('googleCalendar')
@@ -210,25 +248,42 @@ export function AgendaPage() {
     setSearchParams(next, { replace: true })
   }, [scheduleQueryKey, searchParams, setSearchParams])
 
-  const scopedMeetings = useMemo(() => {
-    if (agendaScope === 'team' && ownedTeamId) {
-      let items = filterTeamVisibleMeetings(meetings, ownedTeamId)
-      if (teamMemberFilter !== 'all') {
-        items = items.filter(
-          (meeting) =>
-            meeting.organizerId === teamMemberFilter ||
-            (meeting.participantUserIds || []).includes(teamMemberFilter),
-        )
-      }
-      return items
-    }
-    return meetings
-  }, [agendaScope, meetings, ownedTeamId, teamMemberFilter])
-
   const filteredMeetings = useMemo(
-    () => applyAdvancedFilters(scopedMeetings, filters, currentUserId),
-    [scopedMeetings, filters, currentUserId],
+    () => applyAdvancedFilters(meetings, filters, currentUserId),
+    [meetings, filters, currentUserId],
   )
+
+  const memberNameByUid = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const member of teamRoster) {
+      map.set(member.uid, member.name)
+    }
+    return map
+  }, [teamRoster])
+
+  const filteredTeamSlots = useMemo(() => {
+    return teamSlots.filter((slot) => {
+      if (filters.statuses.length > 0 && !filters.statuses.includes(slot.status as MeetingStatus)) {
+        return false
+      }
+      if (filters.modes.length > 0 && !filters.modes.includes(slot.meetingMode as MeetingMode)) {
+        return false
+      }
+      return true
+    })
+  }, [teamSlots, filters.statuses, filters.modes])
+
+  const accessibleMeetingById = useMemo(() => {
+    const map = new Map<string, Meeting>()
+    for (const meeting of meetings) {
+      map.set(meeting.id, meeting)
+    }
+    return map
+  }, [meetings])
+
+  function resolveAccessibleMeeting(slot: TeamAgendaSlot): Meeting | null {
+    return accessibleMeetingById.get(slot.meetingId) ?? null
+  }
 
   const dayMeetingsSorted = useMemo(() => {
     return [...filteredMeetings]
@@ -243,6 +298,12 @@ export function AgendaPage() {
       })
   }, [filteredMeetings, anchorDate])
 
+  const dayTeamSlotsSorted = useMemo(() => {
+    return [...filteredTeamSlots]
+      .filter((slot) => isSameDay(new Date(slot.startAt), anchorDate))
+      .sort((left, right) => Date.parse(left.startAt) - Date.parse(right.startAt))
+  }, [filteredTeamSlots, anchorDate])
+
   const weekDays = useMemo(() => {
     const start = startOfWeek(anchorDate)
     return Array.from({ length: 7 }, (_, index) => addDays(start, index))
@@ -254,13 +315,24 @@ export function AgendaPage() {
   const activeFilterCount =
     filters.statuses.length +
     filters.modes.length +
-    filters.audiences.length +
-    (filters.groupId ? 1 : 0) +
-    (filters.role !== 'all' ? 1 : 0)
+    (isTeamScope
+      ? 0
+      : filters.audiences.length +
+        (filters.groupId ? 1 : 0) +
+        (filters.role !== 'all' ? 1 : 0))
 
   function changeView(mode: AgendaCalendarView) {
+    if (agendaScope === 'team' && mode === 'list') {
+      setViewMode('day')
+      saveAgendaViewPreference('day')
+      return
+    }
     setViewMode(mode)
     saveAgendaViewPreference(mode)
+  }
+
+  function setScope(scope: 'mine' | 'team') {
+    setAgendaScope(scope)
   }
 
   function openCreate() {
@@ -349,79 +421,87 @@ export function AgendaPage() {
         </div>
       </div>
 
-      <div>
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-hero-text/55">Audiencia</p>
-        <div className="flex flex-wrap gap-2">
-          {AUDIENCE_OPTIONS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() =>
+      {!isTeamScope ? (
+        <>
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-hero-text/55">
+              Audiencia
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {AUDIENCE_OPTIONS.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() =>
+                    setFilters((current) => ({
+                      ...current,
+                      audiences: toggleInList(current.audiences, item.id),
+                    }))
+                  }
+                  className={cn(
+                    'min-h-9 rounded-lg border px-2.5 text-xs font-medium',
+                    filters.audiences.includes(item.id)
+                      ? 'border-gold bg-gold/15 text-gold-light'
+                      : 'border-white/15 bg-white/5 text-hero-text/75',
+                  )}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-hero-text/55">
+              Grupo
+            </p>
+            <select
+              className="min-h-10 w-full rounded-lg border border-white/15 bg-petrol-deep px-3 text-sm text-hero-text"
+              value={filters.groupId || ''}
+              onChange={(event) =>
                 setFilters((current) => ({
                   ...current,
-                  audiences: toggleInList(current.audiences, item.id),
+                  groupId: event.target.value || null,
                 }))
               }
-              className={cn(
-                'min-h-9 rounded-lg border px-2.5 text-xs font-medium',
-                filters.audiences.includes(item.id)
-                  ? 'border-gold bg-gold/15 text-gold-light'
-                  : 'border-white/15 bg-white/5 text-hero-text/75',
-              )}
             >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      </div>
+              <option value="">Todos los grupos accesibles</option>
+              {accessibleGroups.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
-      <div>
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-hero-text/55">Grupo</p>
-        <select
-          className="min-h-10 w-full rounded-lg border border-white/15 bg-petrol-deep px-3 text-sm text-hero-text"
-          value={filters.groupId || ''}
-          onChange={(event) =>
-            setFilters((current) => ({
-              ...current,
-              groupId: event.target.value || null,
-            }))
-          }
-        >
-          <option value="">Todos los grupos accesibles</option>
-          {accessibleGroups.map((group) => (
-            <option key={group.id} value={group.id}>
-              {group.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div>
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-hero-text/55">Rol</p>
-        <div className="flex flex-wrap gap-2">
-          {(
-            [
-              ['all', 'Todos'],
-              ['organized', 'Organizadas por mí'],
-              ['invited', 'Invitado'],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setFilters((current) => ({ ...current, role: id }))}
-              className={cn(
-                'min-h-9 rounded-lg border px-2.5 text-xs font-medium',
-                filters.role === id
-                  ? 'border-gold bg-gold/15 text-gold-light'
-                  : 'border-white/15 bg-white/5 text-hero-text/75',
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-hero-text/55">Rol</p>
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  ['all', 'Todos'],
+                  ['organized', 'Organizadas por mí'],
+                  ['invited', 'Invitado'],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setFilters((current) => ({ ...current, role: id }))}
+                  className={cn(
+                    'min-h-9 rounded-lg border px-2.5 text-xs font-medium',
+                    filters.role === id
+                      ? 'border-gold bg-gold/15 text-gold-light'
+                      : 'border-white/15 bg-white/5 text-hero-text/75',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      ) : null}
     </div>
   )
 
@@ -453,7 +533,7 @@ export function AgendaPage() {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => setAgendaScope('mine')}
+            onClick={() => setScope('mine')}
             className={cn(
               'min-h-10 rounded-lg border px-3 text-sm font-medium',
               agendaScope === 'mine'
@@ -465,7 +545,7 @@ export function AgendaPage() {
           </button>
           <button
             type="button"
-            onClick={() => setAgendaScope('team')}
+            onClick={() => setScope('team')}
             className={cn(
               'min-h-10 rounded-lg border px-3 text-sm font-medium',
               agendaScope === 'team'
@@ -478,32 +558,30 @@ export function AgendaPage() {
         </div>
       ) : null}
 
-      {agendaScope === 'team' ? (
-        <div className="rounded-xl border border-amber-400/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-          Solo reuniones de grupo de tu equipo a las que ya tienes acceso. No se muestran agendas
-          privadas de otros miembros.
-          {teamMembers.length > 0 ? (
-            <div className="mt-2">
-              <select
-                className="min-h-9 rounded-lg border border-white/15 bg-petrol-deep px-2 text-sm text-hero-text"
-                value={teamMemberFilter}
-                onChange={(event) => setTeamMemberFilter(event.target.value)}
-              >
-                <option value="all">Todos</option>
-                {teamMembers.map((member) => (
-                  <option key={member.uid} value={member.uid}>
-                    {member.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : null}
+      {isTeamScope ? (
+        <div className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs text-hero-text/70">
+          Disponibilidad operativa del equipo. No se muestran notas, enlaces ni detalles privados de
+          reuniones ajenas.
+          <div className="mt-2">
+            <select
+              className="min-h-9 rounded-lg border border-white/15 bg-petrol-deep px-2 text-sm text-hero-text"
+              value={teamMemberFilter}
+              onChange={(event) => setTeamMemberFilter(event.target.value)}
+            >
+              <option value="all">Todos</option>
+              {teamRoster.map((member) => (
+                <option key={member.uid} value={member.uid}>
+                  {member.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       ) : null}
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap gap-2">
-          {VIEW_OPTIONS.map((item) => (
+          {VIEW_OPTIONS.filter((item) => !(isTeamScope && item.id === 'list')).map((item) => (
             <button
               key={item.id}
               type="button"
@@ -512,7 +590,7 @@ export function AgendaPage() {
                 'min-h-10 rounded-lg border px-3 text-sm font-medium',
                 !item.mobilePriority && 'hidden sm:inline-flex',
                 item.mobilePriority && 'inline-flex',
-                viewMode === item.id
+                viewMode === item.id || effectiveViewMode === item.id
                   ? 'border-teal-accent/40 bg-teal-accent/15 text-teal-accent'
                   : 'border-white/15 bg-white/5 text-hero-text/75',
               )}
@@ -520,16 +598,17 @@ export function AgendaPage() {
               {item.label}
             </button>
           ))}
-          {/* Always allow week/month on mobile via compact row */}
           <div className="flex gap-2 sm:hidden">
-            {VIEW_OPTIONS.filter((item) => !item.mobilePriority).map((item) => (
+            {VIEW_OPTIONS.filter(
+              (item) => !item.mobilePriority && !(isTeamScope && item.id === 'list'),
+            ).map((item) => (
               <button
                 key={`m-${item.id}`}
                 type="button"
                 onClick={() => changeView(item.id)}
                 className={cn(
                   'min-h-10 rounded-lg border px-3 text-sm font-medium',
-                  viewMode === item.id
+                  viewMode === item.id || effectiveViewMode === item.id
                     ? 'border-teal-accent/40 bg-teal-accent/15 text-teal-accent'
                     : 'border-white/15 bg-white/5 text-hero-text/75',
                 )}
@@ -545,7 +624,7 @@ export function AgendaPage() {
             type="button"
             aria-label="Anterior"
             className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg border border-white/15 bg-white/5 text-hero-text"
-            onClick={() => setAnchorDate((current) => shiftAnchor(viewMode, current, -1))}
+            onClick={() => setAnchorDate((current) => shiftAnchor(effectiveViewMode, current, -1))}
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
@@ -560,7 +639,7 @@ export function AgendaPage() {
             type="button"
             aria-label="Siguiente"
             className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg border border-white/15 bg-white/5 text-hero-text"
-            onClick={() => setAnchorDate((current) => shiftAnchor(viewMode, current, 1))}
+            onClick={() => setAnchorDate((current) => shiftAnchor(effectiveViewMode, current, 1))}
           >
             <ChevronRight className="h-4 w-4" />
           </button>
@@ -570,33 +649,176 @@ export function AgendaPage() {
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-hero-text/45" />
-          <Input
-            value={filters.query}
-            onChange={(event) =>
-              setFilters((current) => ({ ...current, query: event.target.value }))
-            }
-            placeholder="Buscar título, contacto, grupo o participante"
-            className="min-h-11 border-white/15 bg-white/5 pl-10 text-hero-text placeholder:text-hero-text/40"
-          />
+      {!isTeamScope ? (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-hero-text/45" />
+            <Input
+              value={filters.query}
+              onChange={(event) =>
+                setFilters((current) => ({ ...current, query: event.target.value }))
+              }
+              placeholder="Buscar título, contacto, grupo o participante"
+              className="min-h-11 border-white/15 bg-white/5 pl-10 text-hero-text placeholder:text-hero-text/40"
+            />
+          </div>
+          <button
+            type="button"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/5 px-3 text-sm font-medium text-hero-text lg:hidden"
+            onClick={() => setFiltersOpen(true)}
+          >
+            <Filter className="h-4 w-4" />
+            Filtros{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+          </button>
         </div>
-        <button
-          type="button"
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/5 px-3 text-sm font-medium text-hero-text lg:hidden"
-          onClick={() => setFiltersOpen(true)}
-        >
-          <Filter className="h-4 w-4" />
-          Filtros{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
-        </button>
-      </div>
+      ) : (
+        <div className="flex justify-end lg:hidden">
+          <button
+            type="button"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/5 px-3 text-sm font-medium text-hero-text"
+            onClick={() => setFiltersOpen(true)}
+          >
+            <Filter className="h-4 w-4" />
+            Filtros{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+          </button>
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
         <div className="hidden lg:block">{filtersPanel}</div>
 
         <div className="min-w-0">
-          {loading ? (
+          {isTeamScope ? (
+            teamLoading ? (
+              <p className="flex items-center gap-2 text-sm text-hero-text/70">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Cargando agenda del equipo...
+              </p>
+            ) : teamError ? (
+              <p className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                {teamError}
+              </p>
+            ) : filteredTeamSlots.length === 0 ? (
+              <EmptyState
+                icon={CalendarDays}
+                title="No hay reuniones del equipo en este período."
+                description="Prueba otro período, otro miembro o limpia los filtros."
+                className="border-white/15 bg-white/5 [&_h3]:text-hero-text [&_p]:text-hero-text/70"
+              />
+            ) : effectiveViewMode === 'day' ? (
+              <div className="space-y-3">
+                {dayTeamSlotsSorted.map((slot) => (
+                  <TeamBusySlotCard
+                    key={`${slot.meetingId}-${slot.memberUid}`}
+                    slot={slot}
+                    memberName={memberNameByUid.get(slot.memberUid) || 'Miembro'}
+                    accessibleMeeting={resolveAccessibleMeeting(slot)}
+                    onOpenAccessible={setSelectedMeeting}
+                  />
+                ))}
+              </div>
+            ) : effectiveViewMode === 'week' ? (
+              <div className="space-y-3 sm:overflow-x-auto">
+                <div className="grid gap-3 sm:min-w-[640px] sm:grid-cols-7">
+                  {weekDays.map((day) => {
+                    const items = filteredTeamSlots.filter((slot) =>
+                      isSameDay(new Date(slot.startAt), day),
+                    )
+                    return (
+                      <div
+                        key={day.toISOString()}
+                        className="rounded-2xl border border-white/10 bg-white/5 p-3"
+                      >
+                        <p className="text-xs font-semibold uppercase tracking-wide text-hero-text/55">
+                          {day.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric' })}
+                        </p>
+                        <div className="mt-2 space-y-2">
+                          {items.length === 0 ? (
+                            <p className="text-xs text-hero-text/40">Libre</p>
+                          ) : (
+                            items.map((slot) => {
+                              const accessible = resolveAccessibleMeeting(slot)
+                              return (
+                                <button
+                                  key={`${slot.meetingId}-${slot.memberUid}`}
+                                  type="button"
+                                  onClick={() => {
+                                    if (accessible) setSelectedMeeting(accessible)
+                                  }}
+                                  className="w-full rounded-lg border border-white/15 bg-white/5 px-2 py-2 text-left text-xs text-hero-text"
+                                >
+                                  <span className="block font-semibold">
+                                    {memberNameByUid.get(slot.memberUid) || 'Miembro'}
+                                  </span>
+                                  <span className="text-hero-text/65">
+                                    {new Date(slot.startAt).toLocaleTimeString('es-ES', {
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                    })}{' '}
+                                    · {slot.busy ? 'Ocupado' : 'Reunión'}
+                                  </span>
+                                </button>
+                              )
+                            })
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3 overflow-x-auto">
+                <div className="grid min-w-[560px] grid-cols-7 gap-1 text-center text-[11px] font-semibold uppercase tracking-wide text-hero-text/45 sm:gap-2 sm:text-xs">
+                  {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((label) => (
+                    <div key={label} className="py-1">
+                      {label}
+                    </div>
+                  ))}
+                </div>
+                <div className="grid min-w-[560px] grid-cols-7 gap-1 sm:gap-2">
+                  {monthDays.map((day) => {
+                    const inCurrentMonth = day.getMonth() === monthCursor.getMonth()
+                    const items = filteredTeamSlots.filter((slot) =>
+                      isSameDay(new Date(slot.startAt), day),
+                    )
+                    const isToday = isSameDay(day, new Date())
+                    return (
+                      <button
+                        key={day.toISOString()}
+                        type="button"
+                        onClick={() => {
+                          setAnchorDate(startOfDay(day))
+                          changeView('day')
+                        }}
+                        className={cn(
+                          'min-h-20 rounded-xl border p-1.5 text-left sm:min-h-24 sm:p-2',
+                          inCurrentMonth
+                            ? 'border-white/10 bg-white/5'
+                            : 'border-white/5 bg-white/[0.02] opacity-55',
+                          isToday && 'border-gold/40',
+                        )}
+                      >
+                        <p
+                          className={cn(
+                            'text-xs font-semibold',
+                            isToday ? 'text-gold-light' : 'text-hero-text/70',
+                          )}
+                        >
+                          {day.getDate()}
+                        </p>
+                        {items.length > 0 ? (
+                          <p className="mt-2 text-[11px] text-hero-text/65">
+                            {items.length} ocupado{items.length === 1 ? '' : 's'}
+                          </p>
+                        ) : null}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          ) : loading ? (
             <p className="flex items-center gap-2 text-sm text-hero-text/70">
               <Loader2 className="h-4 w-4 animate-spin" />
               Cargando agenda...
@@ -622,7 +844,7 @@ export function AgendaPage() {
                 </Button>
               }
             />
-          ) : viewMode === 'day' ? (
+          ) : effectiveViewMode === 'day' ? (
             <div className="space-y-3">
               {dayMeetingsSorted.map((meeting) => (
                 <MeetingCard
@@ -633,7 +855,7 @@ export function AgendaPage() {
                 />
               ))}
             </div>
-          ) : viewMode === 'week' ? (
+          ) : effectiveViewMode === 'week' ? (
             <div className="overflow-x-auto">
               <div className="grid min-w-[640px] gap-3 md:grid-cols-7">
                 {weekDays.map((day) => {
@@ -676,7 +898,7 @@ export function AgendaPage() {
                 })}
               </div>
             </div>
-          ) : viewMode === 'month' ? (
+          ) : effectiveViewMode === 'month' ? (
             <div className="space-y-3 overflow-x-auto">
               <div className="grid min-w-[560px] grid-cols-7 gap-1 text-center text-[11px] font-semibold uppercase tracking-wide text-hero-text/45 sm:gap-2 sm:text-xs">
                 {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((label) => (
@@ -825,6 +1047,7 @@ export function AgendaPage() {
         onChanged={(meeting) => {
           setSelectedMeeting(meeting)
           void reload()
+          if (isTeamScope) void reloadTeamAgenda()
         }}
       />
 

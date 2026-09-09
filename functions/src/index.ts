@@ -18,6 +18,7 @@ import {
   onMeetingWrittenSyncAgenda,
   processMeetingReminders,
 } from "./meetings/meetingReminders.js";
+import {getTeamAgenda} from "./meetings/teamAgenda.js";
 import {
   adminApproveReferralPayout,
   adminMarkReferralPayoutPaid,
@@ -52,4 +53,5 @@ export {
   createMeetingNextAction,
   onMeetingWrittenSyncAgenda,
   processMeetingReminders,
+  getTeamAgenda,
 };
