@@ -1,12 +1,20 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import logo from '@/assets/logo.png'
 import { Button } from '@/components/ui'
+import { OnboardingProgressNav } from '@/features/auth/components/invitation-onboarding/OnboardingProgressNav'
+import { OnboardingStepClarity } from '@/features/auth/components/invitation-onboarding/OnboardingStepClarity'
+import { OnboardingStepConvert } from '@/features/auth/components/invitation-onboarding/OnboardingStepConvert'
+import { OnboardingStepProblem } from '@/features/auth/components/invitation-onboarding/OnboardingStepProblem'
+import { OnboardingStepSystem } from '@/features/auth/components/invitation-onboarding/OnboardingStepSystem'
 import type {
   InvitationOnboardingStep,
   InvitationOnboardingType,
 } from '@/features/auth/types/invitationOnboarding.types'
-import { buildInvitationOnboardingSteps } from '@/features/auth/utils/invitationOnboardingContent'
+import {
+  getInvitationOnboardingEyebrow,
+  getInvitationOnboardingStepMeta,
+} from '@/features/auth/utils/invitationOnboardingContent'
 import { cn } from '@/lib/utils'
 
 type InvitationOnboardingModalProps = {
@@ -19,6 +27,8 @@ type InvitationOnboardingModalProps = {
 
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])'
+
+const TOTAL_STEPS = 4
 
 export function InvitationOnboardingModal({
   open,
@@ -34,11 +44,8 @@ export function InvitationOnboardingModal({
   const [direction, setDirection] = useState<'forward' | 'back'>('forward')
   const [contentKey, setContentKey] = useState(0)
 
-  const steps = useMemo(
-    () => buildInvitationOnboardingSteps({ type, teamName }),
-    [teamName, type],
-  )
-  const content = steps[step]
+  const meta = getInvitationOnboardingStepMeta({ type, teamName }, step)
+  const eyebrow = getInvitationOnboardingEyebrow(type, teamName)
 
   useEffect(() => {
     if (!open) {
@@ -108,7 +115,7 @@ export function InvitationOnboardingModal({
   }
 
   function handlePrimary() {
-    if (step < 3) {
+    if (step < TOTAL_STEPS) {
       goToStep((step + 1) as InvitationOnboardingStep, 'forward')
       return
     }
@@ -130,7 +137,10 @@ export function InvitationOnboardingModal({
 
   return createPortal(
     <div className="fixed inset-0 z-[120] min-h-[100dvh]">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" aria-hidden="true" />
+      <div
+        className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(6,47,54,0.55),rgba(0,0,0,0.72))] backdrop-blur-sm"
+        aria-hidden="true"
+      />
 
       <div className="relative flex h-full min-h-[100dvh] items-end justify-center p-3 sm:items-center sm:p-6">
         <div
@@ -139,131 +149,64 @@ export function InvitationOnboardingModal({
           aria-modal="true"
           aria-labelledby={titleId}
           className={cn(
-            'relative z-10 flex max-h-[min(92dvh,720px)] w-full max-w-md flex-col overflow-hidden',
-            'rounded-2xl border border-white/15 bg-petrol-deep shadow-[0_24px_80px_rgba(0,0,0,0.45)]',
+            'relative z-10 flex max-h-[min(94dvh,820px)] w-full max-w-[440px] flex-col overflow-hidden sm:max-w-[520px]',
+            'rounded-[28px] border border-white/12 bg-petrol-deep',
+            'shadow-[0_30px_90px_rgba(0,0,0,0.5),0_0_0_1px_rgba(217,164,65,0.08)]',
           )}
         >
-          <div className="shrink-0 border-b border-white/10 px-5 pb-4 pt-5 sm:px-6">
+          <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+            <div className="absolute -left-16 top-0 h-48 w-48 rounded-full bg-teal-accent/12 blur-3xl" />
+            <div className="absolute -right-10 top-24 h-40 w-40 rounded-full bg-gold/10 blur-3xl" />
+            <div className="absolute bottom-0 left-1/2 h-32 w-64 -translate-x-1/2 rounded-full bg-teal-accent/8 blur-3xl" />
+          </div>
+
+          <div className="relative shrink-0 border-b border-white/10 px-5 pb-4 pt-5 sm:px-7 sm:pt-6">
             <div className="flex items-center justify-between gap-3">
               <img
                 src={logo}
                 alt="Expansión"
-                className="h-9 w-auto object-contain sm:h-10"
+                className="h-11 w-auto object-contain sm:h-12"
               />
-              <p className="text-xs font-medium tracking-wide text-hero-text/55">
-                Paso {step} de 3
+              <p className="text-[11px] font-medium tracking-[0.14em] text-hero-text/45 sm:text-xs">
+                SISTEMA DE CRECIMIENTO
               </p>
             </div>
 
-            <div
-              className="mt-4 flex items-center justify-center gap-2"
-              role="progressbar"
-              aria-valuemin={1}
-              aria-valuemax={3}
-              aria-valuenow={step}
-              aria-label={`Paso ${step} de 3`}
-            >
-              {([1, 2, 3] as const).map((dot) => (
-                <span
-                  key={dot}
-                  className={cn(
-                    'h-2.5 w-2.5 rounded-full transition-colors duration-200',
-                    dot === step ? 'scale-110 bg-gold' : 'bg-white/25',
-                  )}
-                  aria-hidden="true"
-                />
-              ))}
-            </div>
-
-            <div className="mt-3 h-1 overflow-hidden rounded-full bg-white/10" aria-hidden="true">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-gold to-teal-accent transition-[width] duration-300 ease-out motion-reduce:transition-none"
-                style={{ width: `${(step / 3) * 100}%` }}
-              />
-            </div>
+            <OnboardingProgressNav step={step} />
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
+          <div className="relative min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
             <div
               key={contentKey}
               className={cn(
                 'motion-reduce:transform-none motion-reduce:opacity-100',
                 direction === 'forward'
-                  ? 'animate-[onboarding-forward_280ms_ease-out]'
-                  : 'animate-[onboarding-back_280ms_ease-out]',
+                  ? 'animate-[onboarding-forward_320ms_ease-out]'
+                  : 'animate-[onboarding-back_320ms_ease-out]',
               )}
             >
-              <h2
-                id={titleId}
-                className="text-xl font-semibold leading-snug text-hero-text sm:text-[1.35rem]"
-              >
-                {content.title}
-              </h2>
-
-              {content.paragraphs?.length ? (
-                <div className="mt-4 space-y-3">
-                  {content.paragraphs.map((paragraph) => (
-                    <p
-                      key={paragraph}
-                      className="text-sm leading-relaxed text-hero-text/80 sm:text-[0.95rem]"
-                    >
-                      {paragraph}
-                    </p>
-                  ))}
-                </div>
-              ) : null}
-
-              {content.benefits?.length ? (
-                <ul className="mt-5 space-y-3">
-                  {content.benefits.map((benefit) => (
-                    <li
-                      key={`${benefit.emoji}-${benefit.title}`}
-                      className="flex gap-3 rounded-xl border border-white/10 bg-white/5 px-3.5 py-3"
-                    >
-                      <span className="text-lg leading-none" aria-hidden="true">
-                        {benefit.emoji}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-hero-text">{benefit.title}</p>
-                        {benefit.description ? (
-                          <p className="mt-1 text-xs leading-relaxed text-hero-text/70 sm:text-sm">
-                            {benefit.description}
-                          </p>
-                        ) : null}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-
-              {content.closingParagraphs?.length ? (
-                <div className="mt-4 space-y-2">
-                  {content.closingParagraphs.map((paragraph) => (
-                    <p
-                      key={paragraph}
-                      className="text-sm font-medium leading-relaxed text-gold-light"
-                    >
-                      {paragraph}
-                    </p>
-                  ))}
-                </div>
+              {step === 1 ? <OnboardingStepProblem titleId={titleId} /> : null}
+              {step === 2 ? <OnboardingStepClarity titleId={titleId} /> : null}
+              {step === 3 ? <OnboardingStepSystem titleId={titleId} /> : null}
+              {step === 4 ? (
+                <OnboardingStepConvert titleId={titleId} eyebrow={eyebrow} />
               ) : null}
             </div>
           </div>
 
-          <div className="shrink-0 space-y-2 border-t border-white/10 px-5 py-4 sm:px-6">
+          <div className="relative shrink-0 space-y-2 border-t border-white/10 bg-petrol-deep/90 px-5 py-4 backdrop-blur-sm sm:px-7">
             <Button
               type="button"
               size="lg"
               data-onboarding-primary="true"
-              className="h-11 w-full bg-gold text-petrol-deep hover:bg-gold-light"
+              className="h-12 w-full bg-gold text-petrol-deep hover:bg-gold-light"
               onClick={handlePrimary}
             >
-              {content.primaryLabel}
+              {meta.primaryLabel}
             </Button>
 
             <div className="flex items-center justify-between gap-3">
-              {content.showBack ? (
+              {meta.showBack ? (
                 <button
                   type="button"
                   onClick={handleBack}
@@ -275,11 +218,11 @@ export function InvitationOnboardingModal({
                 <span />
               )}
 
-              {content.showSkip ? (
+              {meta.showSkip ? (
                 <button
                   type="button"
                   onClick={onSkip}
-                  className="min-h-11 rounded-lg px-2 text-sm font-medium text-hero-text/55 transition-colors hover:text-hero-text/80"
+                  className="min-h-11 rounded-lg px-2 text-sm font-medium text-hero-text/50 transition-colors hover:text-hero-text/80"
                 >
                   Ahora no
                 </button>
@@ -295,7 +238,7 @@ export function InvitationOnboardingModal({
         @keyframes onboarding-forward {
           from {
             opacity: 0;
-            transform: translateX(14px);
+            transform: translateX(16px);
           }
           to {
             opacity: 1;
@@ -306,7 +249,7 @@ export function InvitationOnboardingModal({
         @keyframes onboarding-back {
           from {
             opacity: 0;
-            transform: translateX(-14px);
+            transform: translateX(-16px);
           }
           to {
             opacity: 1;
@@ -314,9 +257,31 @@ export function InvitationOnboardingModal({
           }
         }
 
+        @keyframes onboarding-float {
+          0%, 100% {
+            transform: translateY(0);
+          }
+          50% {
+            transform: translateY(-4px);
+          }
+        }
+
+        @keyframes onboarding-soft-in {
+          from {
+            opacity: 0;
+            transform: scale(0.96);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+
         @media (prefers-reduced-motion: reduce) {
-          .animate-\\[onboarding-forward_280ms_ease-out\\],
-          .animate-\\[onboarding-back_280ms_ease-out\\] {
+          .animate-\\[onboarding-forward_320ms_ease-out\\],
+          .animate-\\[onboarding-back_320ms_ease-out\\],
+          .motion-safe\\:animate-\\[onboarding-float_4\\.8s_ease-in-out_infinite\\],
+          .motion-safe\\:animate-\\[onboarding-soft-in_420ms_ease-out\\] {
             animation: none !important;
           }
         }
