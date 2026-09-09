@@ -210,12 +210,14 @@ export const createGroupMeeting = onCall(
       meetingProvider = googleMeetUrl ? "google_meet" : "none";
     }
 
-    const participants = resolved.participants.map((participant) => ({
-      type: "user" as const,
-      userId: participant.userId,
-      name: participant.name,
-      email: participant.email,
-    }));
+    const participants = resolved.participants.map((participant) => {
+      const base = {
+        type: "user" as const,
+        userId: participant.userId,
+        name: participant.name,
+      };
+      return participant.email ? {...base, email: participant.email} : base;
+    });
 
     const meetingRef = getDefaultFirestore().collection(COLLECTIONS.meetings).doc();
     const payload = {
@@ -328,12 +330,14 @@ export const updateGroupMeetingParticipants = onCall(
       selectedUserIds: data.selectedUserIds,
     });
 
-    const participants = resolved.participants.map((participant) => ({
-      type: "user" as const,
-      userId: participant.userId,
-      name: participant.name,
-      email: participant.email,
-    }));
+    const participants = resolved.participants.map((participant) => {
+      const base = {
+        type: "user" as const,
+        userId: participant.userId,
+        name: participant.name,
+      };
+      return participant.email ? {...base, email: participant.email} : base;
+    });
 
     if (
       data.syncGoogleAttendees &&

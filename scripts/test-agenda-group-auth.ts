@@ -175,6 +175,19 @@ run('GROUP-03 no-email stays internal; Google attendees exclude missing emails',
   assert.ok(resolved.participantUserIds.includes(MEMBER_A_NO_EMAIL))
   assert.ok(resolved.participantUserIds.includes(MEMBER_A1))
   assert.deepEqual(resolved.attendeeEmails, ['a1@example.com'])
+
+  // Firestore Admin rejects undefined field values — omit email when missing.
+  const firestoreParticipants = resolved.participants.map((participant) => {
+    const base = {
+      type: 'user' as const,
+      userId: participant.userId,
+      name: participant.name,
+    }
+    return participant.email ? { ...base, email: participant.email } : base
+  })
+  const noEmailDoc = firestoreParticipants.find((p) => p.userId === MEMBER_A_NO_EMAIL)
+  assert.ok(noEmailDoc)
+  assert.equal('email' in noEmailDoc!, false)
 })
 
 run('GROUP-04 attendee emails unique and derived from validated membership', () => {
