@@ -1,6 +1,15 @@
 import {onCall} from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import {
+  cancelGoogleCalendarEvent,
+  createGoogleCalendarEvent,
+  disconnectGoogleCalendar,
+  getGoogleCalendarConnectUrl,
+  getGoogleCalendarConnectionStatus,
+  googleCalendarOAuthCallback,
+  updateGoogleCalendarEvent,
+} from "./calendar/googleCalendar.js";
+import {
   adminApproveReferralPayout,
   adminMarkReferralPayoutPaid,
   adminRejectReferralPayout,
@@ -22,4 +31,11 @@ export {
   adminApproveReferralPayout,
   adminMarkReferralPayoutPaid,
   adminRejectReferralPayout,
+  getGoogleCalendarConnectionStatus,
+  getGoogleCalendarConnectUrl,
+  disconnectGoogleCalendar,
+  googleCalendarOAuthCallback,
+  createGoogleCalendarEvent,
+  updateGoogleCalendarEvent,
+  cancelGoogleCalendarEvent,
 };

@@ -119,6 +119,19 @@ export const router = createBrowserRouter([
         },
       },
       {
+        path: 'dashboard/agenda',
+        lazy: async () => {
+          const { AgendaPage } = await import('@/features/agenda/pages/AgendaPage')
+          return {
+            Component: () => (
+              <OwnerModuleRoute>
+                <AgendaPage />
+              </OwnerModuleRoute>
+            ),
+          }
+        },
+      },
+      {
         path: 'dashboard/radar',
         lazy: async () => {
           const { RadarPage } = await import('@/features/radar/pages/RadarPage')

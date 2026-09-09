@@ -14,7 +14,9 @@
     "backfill:team-member-leaders": "tsx scripts/backfill-team-member-leaders.ts",
     "backfill:referral-uplines": "tsx scripts/backfill-referral-uplines.ts",
     "audit:referral-chain": "tsx scripts/audit-referral-chain.ts",
-    "migrate:referral-rewards-payable": "tsx scripts/migrate-referral-rewards-payable.ts"
+    "migrate:referral-rewards-payable": "tsx scripts/migrate-referral-rewards-payable.ts",
+    "test:agenda": "tsx scripts/test-agenda-utils.ts && tsx scripts/test-agenda-security-matrix.ts",
+    "test:agenda-rules": "firebase emulators:exec --only firestore --project expansion-agenda-rules-test \"tsx scripts/test-agenda-rules.ts\""
   },
   "dependencies": {
     "firebase": "^12.14.0",
@@ -26,6 +28,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@firebase/rules-unit-testing": "^4.0.1",
     "@tailwindcss/vite": "^4.3.0",
     "@types/node": "^24.12.3",
     "@types/react": "^19.2.14",

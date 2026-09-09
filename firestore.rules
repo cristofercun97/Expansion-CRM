@@ -3333,6 +3333,78 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------------------
+    // meetings/{meetingId}
+    // READ: organizador, participantes internos (participantUserIds) o admin.
+    // UPDATE: solo organizador o admin. Participante = read-only.
+    // Campos inmutables en update: organizerId, createdBy, createdAt.
+    // -------------------------------------------------------------------------
+    match /meetings/{meetingId} {
+      function isMeetingOrganizer() {
+        return isSignedIn() &&
+          isEmailVerified() &&
+          resource.data.organizerId == request.auth.uid;
+      }
+
+      function isMeetingParticipant() {
+        return isSignedIn() &&
+          isEmailVerified() &&
+          resource.data.participantUserIds is list &&
+          request.auth.uid in resource.data.participantUserIds;
+      }
+
+      function preservesMeetingAuditFields() {
+        return request.resource.data.organizerId == resource.data.organizerId &&
+          request.resource.data.createdBy == resource.data.createdBy &&
+          request.resource.data.createdAt == resource.data.createdAt;
+      }
+
+      allow create: if isSignedIn() &&
+        isEmailVerified() &&
+        request.resource.data.organizerId == request.auth.uid &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.updatedBy == request.auth.uid &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0 &&
+        request.resource.data.title.size() <= 160 &&
+        request.resource.data.status == 'scheduled' &&
+        request.resource.data.durationMinutes is number &&
+        request.resource.data.durationMinutes >= 5 &&
+        request.resource.data.durationMinutes <= 480 &&
+        request.resource.data.participantUserIds is list &&
+        request.resource.data.participantUserIds.size() <= 50;
+
+      allow read: if isAdmin() || isMeetingOrganizer() || isMeetingParticipant();
+
+      allow update: if preservesMeetingAuditFields() && (
+        isAdmin() ||
+        (
+          isMeetingOrganizer() &&
+          request.resource.data.updatedBy == request.auth.uid &&
+          request.resource.data.participantUserIds is list &&
+          request.resource.data.participantUserIds.size() <= 50
+        )
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // googleCalendarConnections/{uid}
+    // Tokens OAuth solo vía Admin SDK (Cloud Functions). Cliente: denegado.
+    // -------------------------------------------------------------------------
+    match /googleCalendarConnections/{uid} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // googleOAuthStates/{stateId}
+    // State OAuth de un solo uso. Solo Admin SDK.
+    // -------------------------------------------------------------------------
+    match /googleOAuthStates/{stateId} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
     // DENEGAR TODO LO DEMÁS
     // Cualquier colección no definida explícitamente queda bloqueada.
     // -------------------------------------------------------------------------

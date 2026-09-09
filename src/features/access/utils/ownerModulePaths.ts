@@ -2,6 +2,7 @@ export const OWNER_ONLY_MODULE_PATHS = [
   '/dashboard/presentacion',
   '/dashboard/radar',
   '/dashboard/contactos',
+  '/dashboard/agenda',
 ] as const
 
 export function isOwnerOnlyModulePath(pathname: string): boolean {

@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import { useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui'
 import { ContactWhatsappButton } from '@/features/contacts/components/ContactWhatsappButton'
 import type { Contact } from '@/features/contacts/types/contact.types'
@@ -24,6 +25,8 @@ function DetailField({ label, value }: { label: string; value: string }) {
 }
 
 export function ContactDetailModal({ contact, onClose }: ContactDetailModalProps) {
+  const navigate = useNavigate()
+
   useEffect(() => {
     if (!contact) {
       return
@@ -46,6 +49,13 @@ export function ContactDetailModal({ contact, onClose }: ContactDetailModalProps
 
   if (!contact) {
     return null
+  }
+
+  const contactId = contact.id
+
+  function handleScheduleMeeting() {
+    onClose()
+    navigate(`/dashboard/agenda?contactId=${encodeURIComponent(contactId)}&action=schedule`)
   }
 
   return (
@@ -99,6 +109,9 @@ export function ContactDetailModal({ contact, onClose }: ContactDetailModalProps
 
         <div className="mt-6 flex flex-wrap gap-3">
           <ContactWhatsappButton whatsapp={contact.whatsapp} size="md" />
+          <Button type="button" onClick={handleScheduleMeeting}>
+            Agendar reunión
+          </Button>
           <Button type="button" variant="outline" onClick={onClose}>
             Cerrar
           </Button>

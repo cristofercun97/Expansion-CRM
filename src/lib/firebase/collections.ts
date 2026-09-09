@@ -28,6 +28,8 @@ export const COLLECTIONS = {
   teamSalesGoals: 'teamSalesGoals',
   teamSalesReports: 'teamSalesReports',
   teamSalesGoalHistory: 'teamSalesGoalHistory',
+  meetings: 'meetings',
+  googleCalendarConnections: 'googleCalendarConnections',
 } as const
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS]

@@ -11,4 +11,7 @@ export const COLLECTIONS = {
   users: "users",
   referralRewards: "referralRewards",
   referralPayoutRequests: "referralPayoutRequests",
+  googleCalendarConnections: "googleCalendarConnections",
+  googleOAuthStates: "googleOAuthStates",
+  meetings: "meetings",
 } as const;

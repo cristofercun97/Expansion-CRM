@@ -27,6 +27,7 @@ export type LeadActivityType =
   | 'whatsapp'
   | 'status_change'
   | 'task'
+  | 'meeting'
 
 export type FirestoreDate = Timestamp
 

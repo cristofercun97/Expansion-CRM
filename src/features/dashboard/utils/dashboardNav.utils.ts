@@ -12,6 +12,7 @@ const MOBILE_NAV_LABELS: Partial<Record<string, string>> = {
   '/dashboard/presentacion': 'Presentación',
   '/dashboard/radar': 'Radar',
   '/dashboard/contactos': 'Contactos',
+  '/dashboard/agenda': 'Agenda',
   '/dashboard/academia': 'Academia',
   '/dashboard/progreso-equipo': 'Equipo',
   '/dashboard/plan': 'Plan',
