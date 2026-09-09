@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/features/auth/hooks/useAuth'
 import { DashboardMobileBottomNav } from '@/features/dashboard/components/DashboardMobileBottomNav'
 import { DashboardMobileHeader } from '@/features/dashboard/components/DashboardMobileHeader'
 import { DashboardSidebar } from '@/features/dashboard/components/DashboardSidebar'
+import { NotificationsBell } from '@/features/notifications/components/NotificationsBell'
 import type { DashboardUserIdentity } from '@/features/dashboard/types/dashboard.types'
 
 const DESKTOP_BREAKPOINT = 1024
@@ -32,11 +34,17 @@ function useIsDesktop() {
 
 export function DashboardShell({ children, user, onLogout }: DashboardShellProps) {
   const navigate = useNavigate()
+  const { currentUser } = useAuth()
   const isDesktop = useIsDesktop()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
   const effectiveCollapsed = collapsed && isDesktop
+  const notificationUid = currentUser?.uid?.trim() || ''
+
+  if (isDesktop && mobileOpen) {
+    setMobileOpen(false)
+  }
 
   const handleToggleCollapse = useCallback(() => {
     setCollapsed((current) => !current)
@@ -49,12 +57,6 @@ export function DashboardShell({ children, user, onLogout }: DashboardShellProps
   const handleSettingsClick = useCallback(() => {
     navigate('/dashboard/configuracion')
   }, [navigate])
-
-  useEffect(() => {
-    if (isDesktop) {
-      setMobileOpen(false)
-    }
-  }, [isDesktop])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-hero-bg via-petrol-dark to-petrol-deep text-hero-text">
@@ -77,6 +79,12 @@ export function DashboardShell({ children, user, onLogout }: DashboardShellProps
         isDesktop={isDesktop}
       />
 
+      {isDesktop && notificationUid ? (
+        <div className="fixed right-5 top-4 z-20">
+          <NotificationsBell uid={notificationUid} />
+        </div>
+      ) : null}
+
       <div
         className={cn(
           'min-h-screen overflow-x-hidden transition-[margin-left] duration-300 ease-in-out',
@@ -86,7 +94,13 @@ export function DashboardShell({ children, user, onLogout }: DashboardShellProps
         )}
       >
         {!isDesktop ? (
-          <DashboardMobileHeader onSettingsClick={handleSettingsClick} onLogout={onLogout} />
+          <DashboardMobileHeader
+            onSettingsClick={handleSettingsClick}
+            onLogout={onLogout}
+            notificationsSlot={
+              notificationUid ? <NotificationsBell uid={notificationUid} /> : null
+            }
+          />
         ) : null}
 
         {children}

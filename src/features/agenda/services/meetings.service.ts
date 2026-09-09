@@ -212,6 +212,16 @@ async function createMeetingActivity(
   organizerId: string,
   contactId: string | null,
   description: string,
+  options?: {
+    eventKind?:
+      | 'meeting_scheduled'
+      | 'meeting_rescheduled'
+      | 'meeting_completed'
+      | 'meeting_no_show'
+      | 'meeting_cancelled'
+      | 'next_action_created'
+    meetingId?: string
+  },
 ): Promise<void> {
   if (!contactId) {
     return
@@ -221,9 +231,11 @@ async function createMeetingActivity(
     await leadActivitiesService.createLeadActivity({
       prospectId: contactId,
       leaderId: organizerId,
-      type: 'meeting',
+      type: options?.eventKind === 'next_action_created' ? 'task' : 'meeting',
       description,
       createdBy: organizerId,
+      eventKind: options?.eventKind,
+      meetingId: options?.meetingId,
     })
   } catch {
     // Contact history is complementary; meeting creation should not fail if activity write fails.
@@ -344,6 +356,7 @@ async function createMeeting(organizerId: string, input: CreateMeetingInput): Pr
     organizerId,
     input.contactId,
     `Reunión agendada: ${input.title}`,
+    { eventKind: 'meeting_scheduled', meetingId: docRef.id },
   )
 
   const created = await getMeetingById(docRef.id)
@@ -693,6 +706,13 @@ async function rescheduleMeeting(
     reason: input.reason?.trim() || null,
   })
 
+  await createMeetingActivity(
+    organizerId,
+    existing.contactId,
+    `Reunión reprogramada: ${existing.title}`,
+    { eventKind: 'meeting_rescheduled', meetingId },
+  )
+
   const updated = await getMeetingById(meetingId)
   if (!updated) {
     throw new Error('La reunión se reprogramó, pero no pudimos cargarla.')
@@ -754,6 +774,7 @@ async function cancelMeeting(
     organizerId,
     existing.contactId,
     `Reunión cancelada: ${existing.title}`,
+    { eventKind: 'meeting_cancelled', meetingId },
   )
 
   const updated = await getMeetingById(meetingId)
@@ -822,6 +843,10 @@ async function recordMeetingResult(
     input.outcome === 'completed'
       ? `Reunión realizada: ${existing.title}${notes ? ` · ${notes}` : ''}`
       : `Reunión sin asistencia: ${existing.title}`,
+    {
+      eventKind: input.outcome === 'completed' ? 'meeting_completed' : 'meeting_no_show',
+      meetingId,
+    },
   )
 
   const updated = await getMeetingById(meetingId)

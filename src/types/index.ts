@@ -107,6 +107,14 @@ export interface Prospect {
   updatedAt: FirestoreDate
 }
 
+export type LeadActivityEventKind =
+  | 'meeting_scheduled'
+  | 'meeting_rescheduled'
+  | 'meeting_completed'
+  | 'meeting_no_show'
+  | 'meeting_cancelled'
+  | 'next_action_created'
+
 export interface LeadActivity {
   id?: string
   prospectId: string
@@ -115,6 +123,9 @@ export interface LeadActivity {
   description: string
   createdAt: FirestoreDate
   createdBy: string
+  eventKind?: LeadActivityEventKind
+  meetingId?: string
+  taskId?: string
 }
 
 export interface ReferralCode {

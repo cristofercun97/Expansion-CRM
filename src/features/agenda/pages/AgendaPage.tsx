@@ -6,6 +6,7 @@ import { useToast } from '@/components/ui/toast/ToastProvider'
 import { GoogleCalendarStatusCard } from '@/features/agenda/components/GoogleCalendarStatusCard'
 import { MeetingCard } from '@/features/agenda/components/MeetingCard'
 import { MeetingDetailModal } from '@/features/agenda/components/MeetingDetailModal'
+import { CreateMeetingNextActionModal } from '@/features/agenda/components/CreateMeetingNextActionModal'
 import { RecordMeetingResultModal } from '@/features/agenda/components/RecordMeetingResultModal'
 import { RescheduleMeetingModal } from '@/features/agenda/components/RescheduleMeetingModal'
 import { ScheduleMeetingModal } from '@/features/agenda/components/ScheduleMeetingModal'
@@ -53,9 +54,11 @@ export function AgendaPage() {
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null)
   const [rescheduleMeeting, setRescheduleMeeting] = useState<Meeting | null>(null)
   const [resultMeeting, setResultMeeting] = useState<Meeting | null>(null)
+  const [nextActionMeeting, setNextActionMeeting] = useState<Meeting | null>(null)
   const [preselectedContactId, setPreselectedContactId] = useState<string | undefined>()
   const [scheduleSession, setScheduleSession] = useState(0)
   const [consumedScheduleQuery, setConsumedScheduleQuery] = useState('')
+  const [consumedMeetingDeepLink, setConsumedMeetingDeepLink] = useState('')
   const [googleStatus, setGoogleStatus] = useState<GoogleCalendarConnectionStatus>({
     connected: false,
     email: null,
@@ -72,6 +75,7 @@ export function AgendaPage() {
     scheduleQueryAction === 'schedule' && scheduleQueryContactId
       ? `${scheduleQueryContactId}:${scheduleQueryAction}`
       : ''
+  const meetingDeepLinkId = searchParams.get('meetingId')?.trim() ?? ''
 
   if (scheduleQueryKey && scheduleQueryKey !== consumedScheduleQuery) {
     setConsumedScheduleQuery(scheduleQueryKey)
@@ -81,6 +85,31 @@ export function AgendaPage() {
     setScheduleSession((value) => value + 1)
     setScheduleOpen(true)
   }
+
+  if (
+    meetingDeepLinkId &&
+    meetingDeepLinkId !== consumedMeetingDeepLink &&
+    !loading &&
+    meetings.length > 0
+  ) {
+    const found = meetings.find((item) => item.id === meetingDeepLinkId)
+    if (found) {
+      setConsumedMeetingDeepLink(meetingDeepLinkId)
+      setSelectedMeeting(found)
+    }
+  }
+
+  useEffect(() => {
+    if (!meetingDeepLinkId || meetingDeepLinkId !== consumedMeetingDeepLink) {
+      return
+    }
+    const next = new URLSearchParams(searchParams)
+    if (!next.has('meetingId')) {
+      return
+    }
+    next.delete('meetingId')
+    setSearchParams(next, { replace: true })
+  }, [meetingDeepLinkId, consumedMeetingDeepLink, searchParams, setSearchParams])
 
   useEffect(() => {
     if (!organizerId) {
@@ -450,6 +479,10 @@ export function AgendaPage() {
           setSelectedMeeting(null)
           setResultMeeting(meeting)
         }}
+        onCreateNextAction={(meeting) => {
+          setSelectedMeeting(null)
+          setNextActionMeeting(meeting)
+        }}
         onChanged={(meeting) => {
           setSelectedMeeting(meeting)
           void reload()
@@ -472,6 +505,20 @@ export function AgendaPage() {
         onClose={() => setResultMeeting(null)}
         onSaved={() => {
           setResultMeeting(null)
+          void reload()
+        }}
+        onOfferNextAction={(meeting) => {
+          setNextActionMeeting(meeting)
+        }}
+      />
+
+      <CreateMeetingNextActionModal
+        meeting={nextActionMeeting}
+        open={Boolean(nextActionMeeting)}
+        onClose={() => setNextActionMeeting(null)}
+        onCreated={() => {
+          setNextActionMeeting(null)
+          showToast('Próxima acción creada en tu Plan de Acción.', 'success')
           void reload()
         }}
       />

@@ -17,6 +17,7 @@ type MeetingDetailModalProps = {
   onEdit: (meeting: Meeting) => void
   onReschedule: (meeting: Meeting) => void
   onRecordResult: (meeting: Meeting) => void
+  onCreateNextAction?: (meeting: Meeting) => void
   onChanged: (meeting: Meeting) => void
 }
 
@@ -28,6 +29,7 @@ export function MeetingDetailModal({
   onEdit,
   onReschedule,
   onRecordResult,
+  onCreateNextAction,
 }: MeetingDetailModalProps) {
   const [showAllParticipants, setShowAllParticipants] = useState(false)
   const [sourceId, setSourceId] = useState(meeting?.id ?? null)
@@ -186,6 +188,22 @@ export function MeetingDetailModal({
           ) : meeting.meetingMode === 'in_person' ? (
             <p className="text-hero-text/55">Reunión presencial{meeting.location ? '' : '.'}</p>
           ) : null}
+
+          {(meeting.status === 'scheduled' || meeting.status === 'rescheduled') ? (
+            <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-gold-light">
+                Recordatorios
+              </p>
+              <ul className="mt-2 space-y-1 text-sm text-hero-text/75">
+                <li>✓ 24h</li>
+                <li>✓ 1h</li>
+                <li>✓ 10 min</li>
+              </ul>
+              <p className="mt-2 text-[11px] text-hero-text/45">
+                Se programan automáticamente según la hora de inicio.
+              </p>
+            </div>
+          ) : null}
         </div>
 
         {canManage && meeting.status === 'scheduled' ? (
@@ -215,6 +233,26 @@ export function MeetingDetailModal({
             >
               Registrar resultado
             </Button>
+          </div>
+        ) : null}
+
+        {canManage && meeting.status === 'completed' ? (
+          <div className="mt-6 space-y-3 border-t border-white/10 pt-4">
+            <p className="text-sm font-medium text-hero-text">¿Cuál es el siguiente paso?</p>
+            {meeting.nextActionTaskId ? (
+              <p className="text-sm text-hero-text/65">
+                Ya creaste una próxima acción para esta reunión.
+              </p>
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => onCreateNextAction?.(meeting)}
+                className="bg-gold text-petrol-deep hover:bg-gold-light"
+              >
+                + Crear próxima acción
+              </Button>
+            )}
           </div>
         ) : null}
 

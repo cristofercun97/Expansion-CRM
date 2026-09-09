@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 type DashboardMobileHeaderProps = {
   onSettingsClick: () => void
   onLogout: () => void
+  notificationsSlot?: ReactNode
 }
 
 function HeaderIconButton({
@@ -30,7 +31,11 @@ function HeaderIconButton({
   )
 }
 
-export function DashboardMobileHeader({ onSettingsClick, onLogout }: DashboardMobileHeaderProps) {
+export function DashboardMobileHeader({
+  onSettingsClick,
+  onLogout,
+  notificationsSlot,
+}: DashboardMobileHeaderProps) {
   return (
     <header
       className={cn(
@@ -50,6 +55,7 @@ export function DashboardMobileHeader({ onSettingsClick, onLogout }: DashboardMo
         </Link>
 
         <div className="flex items-center gap-2">
+          {notificationsSlot}
           <HeaderIconButton label="Configuración" onClick={onSettingsClick}>
             <Settings className="h-5 w-5" aria-hidden="true" />
           </HeaderIconButton>

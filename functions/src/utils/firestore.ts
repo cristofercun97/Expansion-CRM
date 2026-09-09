@@ -16,4 +16,9 @@ export const COLLECTIONS = {
   meetings: "meetings",
   teams: "teams",
   teamMembers: "teamMembers",
+  meetingReminders: "meetingReminders",
+  notifications: "notifications",
+  actionTasks: "actionTasks",
+  leadActivities: "leadActivities",
+  meetingNextActionLocks: "meetingNextActionLocks",
 } as const;

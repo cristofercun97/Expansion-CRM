@@ -30,6 +30,9 @@ export const COLLECTIONS = {
   teamSalesGoalHistory: 'teamSalesGoalHistory',
   meetings: 'meetings',
   googleCalendarConnections: 'googleCalendarConnections',
+  meetingReminders: 'meetingReminders',
+  notifications: 'notifications',
+  meetingNextActionLocks: 'meetingNextActionLocks',
 } as const
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS]

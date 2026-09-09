@@ -95,6 +95,8 @@ export type Meeting = {
   cancelReason: string | null
   resultRecordedBy: string | null
   resultRecordedAt: Timestamp | null
+  /** Set when a follow-up Plan de Acción task was created from this meeting. */
+  nextActionTaskId?: string | null
 }
 
 export type MeetingFormValues = {

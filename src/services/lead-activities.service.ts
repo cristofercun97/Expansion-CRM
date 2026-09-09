@@ -20,6 +20,12 @@ function mapLeadActivity(id: string, data: DocumentData): LeadActivity {
     description: data.description ?? '',
     createdAt: data.createdAt,
     createdBy: data.createdBy ?? '',
+    eventKind:
+      typeof data.eventKind === 'string'
+        ? (data.eventKind as LeadActivity['eventKind'])
+        : undefined,
+    meetingId: typeof data.meetingId === 'string' ? data.meetingId : undefined,
+    taskId: typeof data.taskId === 'string' ? data.taskId : undefined,
   }
 }
 

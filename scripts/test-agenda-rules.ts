@@ -556,6 +556,65 @@ async function main() {
     console.log('ATTACK-03 organizer tamper DENIED | ATTACK-04 participant mutate DENIED')
     console.log('Field lock: organizerId/createdBy/createdAt immutable | Google fields participant-deny')
     console.log('Collections: googleCalendarConnections DENIED | googleOAuthStates DENIED')
+
+    // Phase 2B notifications security
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.firestore().doc('notifications/notif_b1').set({
+        recipientUid: USER_B,
+        type: 'meeting_invitation',
+        title: 'Te han invitado a una reunión',
+        message: 'Kickoff',
+        meetingId: MEETING_ID,
+        actionUrl: '/dashboard/agenda',
+        actionLabel: 'Ver reunión',
+        read: false,
+        createdAt: new Date(),
+        readAt: null,
+      })
+    })
+
+    const notifOwner = authContext(testEnv, USER_B).firestore()
+    const notifStranger = authContext(testEnv, USER_C).firestore()
+
+    await assertSucceeds(notifOwner.doc('notifications/notif_b1').get())
+    await assertFails(notifStranger.doc('notifications/notif_b1').get())
+    await assertSucceeds(
+      notifOwner.doc('notifications/notif_b1').update({
+        read: true,
+        readAt: new Date(),
+      }),
+    )
+    await assertFails(
+      notifOwner.doc('notifications/notif_b1').update({
+        recipientUid: USER_C,
+        read: true,
+        readAt: new Date(),
+      }),
+    )
+    await assertFails(
+      notifOwner.collection('notifications').add({
+        recipientUid: USER_B,
+        type: 'meeting_invitation',
+        title: 'fake',
+        message: 'x',
+        meetingId: 'x',
+        actionUrl: '/',
+        actionLabel: 'x',
+        read: false,
+        createdAt: new Date(),
+        readAt: null,
+      }),
+    )
+    await assertFails(organizerDb.doc('meetingReminders/rem1').get())
+    await assertFails(
+      organizerDb.doc('meetingReminders/rem1').set({
+        meetingId: MEETING_ID,
+        status: 'pending',
+      }),
+    )
+
+    console.log('Notifications: recipient read/mark-read OK | stranger deny | client create deny')
+    console.log('meetingReminders: client read/write DENIED')
   } finally {
     await testEnv.cleanup()
   }

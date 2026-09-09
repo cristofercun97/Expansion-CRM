@@ -9,6 +9,7 @@ type RecordMeetingResultModalProps = {
   organizerId: string
   onClose: () => void
   onSaved: (meeting: Meeting) => void
+  onOfferNextAction?: (meeting: Meeting) => void
 }
 
 type Outcome = RecordMeetingResultInput['outcome']
@@ -18,6 +19,7 @@ export function RecordMeetingResultModal({
   organizerId,
   onClose,
   onSaved,
+  onOfferNextAction,
 }: RecordMeetingResultModalProps) {
   const [outcome, setOutcome] = useState<Outcome>('completed')
   const [resultNotes, setResultNotes] = useState('')
@@ -73,6 +75,9 @@ export function RecordMeetingResultModal({
       })
       onSaved(updated)
       onClose()
+      if (outcome === 'completed' && !updated.nextActionTaskId) {
+        onOfferNextAction?.(updated)
+      }
     } catch (submitError) {
       setError(
         submitError instanceof Error

@@ -146,5 +146,6 @@ export function mapMeetingDocument(id: string, data: DocumentData): Meeting {
     cancelReason: asNullableString(data.cancelReason),
     resultRecordedBy: asNullableString(data.resultRecordedBy),
     resultRecordedAt: data.resultRecordedAt instanceof Timestamp ? data.resultRecordedAt : null,
+    nextActionTaskId: asNullableString(data.nextActionTaskId),
   }
 }
