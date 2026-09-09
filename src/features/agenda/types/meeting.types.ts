@@ -11,6 +11,11 @@ export type MeetingType =
   | 'evaluation'
   | 'other'
 
+/** Audience: individual contact/users vs group meeting. Legacy docs without field ⇒ individual. */
+export type MeetingAudience = 'individual' | 'group'
+
+export type GroupMemberSelectionMode = 'all' | 'partial'
+
 /** Cómo se celebra la reunión (fuente de verdad EXPANSIÓN). */
 export type MeetingMode = 'video' | 'in_person' | 'other'
 
@@ -30,6 +35,26 @@ export type MeetingParticipant = {
   email?: string
 }
 
+export type MeetingHistoryType =
+  | 'created'
+  | 'rescheduled'
+  | 'completed'
+  | 'no_show'
+  | 'cancelled'
+
+export type MeetingHistoryEvent = {
+  id: string
+  type: MeetingHistoryType
+  changedBy: string
+  changedAt: Timestamp | null
+  previousStartAt?: Timestamp | null
+  previousEndAt?: Timestamp | null
+  newStartAt?: Timestamp | null
+  newEndAt?: Timestamp | null
+  reason?: string | null
+  resultNotes?: string | null
+}
+
 export type Meeting = {
   id: string
   title: string
@@ -45,7 +70,9 @@ export type Meeting = {
   organizerId: string
   organizerName: string
   contactId: string | null
+  meetingAudience: MeetingAudience
   groupId: string | null
+  groupNameSnapshot: string | null
   participants: MeetingParticipant[]
   /** UIDs de usuarios internos invitados (autorización; no usar email). */
   participantUserIds: string[]
@@ -64,6 +91,10 @@ export type Meeting = {
   updatedBy: string
   completedAt: Timestamp | null
   cancelledAt: Timestamp | null
+  cancelledBy: string | null
+  cancelReason: string | null
+  resultRecordedBy: string | null
+  resultRecordedAt: Timestamp | null
 }
 
 export type MeetingFormValues = {
@@ -76,6 +107,10 @@ export type MeetingFormValues = {
   durationMinutes: number
   customDurationMinutes: string
   contactId: string
+  meetingAudience: MeetingAudience
+  groupId: string
+  groupNameSnapshot: string
+  groupMemberSelectionMode: GroupMemberSelectionMode
   participants: MeetingParticipant[]
   meetingMode: MeetingMode
   /** Solo relevante si meetingMode === 'video' */
@@ -93,6 +128,9 @@ export type CreateMeetingInput = {
   durationMinutes: number
   timezone: string
   contactId: string | null
+  meetingAudience: MeetingAudience
+  groupId: string | null
+  groupNameSnapshot: string | null
   participants: MeetingParticipant[]
   meetingMode: MeetingMode
   videoProvider: VideoProvider
@@ -110,12 +148,28 @@ export type UpdateMeetingInput = {
   durationMinutes: number
   timezone: string
   contactId: string | null
+  meetingAudience: MeetingAudience
+  groupId: string | null
+  groupNameSnapshot: string | null
   participants: MeetingParticipant[]
   meetingMode: MeetingMode
   videoProvider: VideoProvider
   meetingUrl: string | null
   location: string | null
   syncGoogle: boolean
+}
+
+export type RescheduleMeetingInput = {
+  startAt: Date
+  durationMinutes: number
+  timezone: string
+  reason?: string
+}
+
+export type RecordMeetingResultInput = {
+  outcome: 'completed' | 'no_show' | 'cancelled'
+  resultNotes?: string
+  cancelReason?: string
 }
 
 export type GoogleCalendarConnectionStatus = {

@@ -272,6 +272,105 @@ async function main() {
       }),
     )
 
+    // Phase 2A — status transitions + history
+    await assertSucceeds(
+      organizerDb.doc(`meetings/${MEETING_ID}`).update({
+        startAt: new Date('2026-09-15T18:00:00.000Z'),
+        endAt: new Date('2026-09-15T18:30:00.000Z'),
+        status: 'scheduled',
+        updatedBy: USER_A,
+        updatedAt: new Date(),
+      }),
+    )
+
+    await assertSucceeds(
+      organizerDb.collection(`meetings/${MEETING_ID}/history`).add({
+        type: 'rescheduled',
+        changedBy: USER_A,
+        changedAt: new Date(),
+        previousStartAt: new Date('2026-09-15T17:00:00.000Z'),
+        previousEndAt: new Date('2026-09-15T17:30:00.000Z'),
+        newStartAt: new Date('2026-09-15T18:00:00.000Z'),
+        newEndAt: new Date('2026-09-15T18:30:00.000Z'),
+      }),
+    )
+
+    await assertFails(
+      participantDb.collection(`meetings/${MEETING_ID}/history`).add({
+        type: 'rescheduled',
+        changedBy: USER_B,
+        changedAt: new Date(),
+      }),
+    )
+
+    await assertSucceeds(participantDb.collection(`meetings/${MEETING_ID}/history`).get())
+    await assertFails(strangerDb.collection(`meetings/${MEETING_ID}/history`).get())
+
+    await assertSucceeds(
+      organizerDb.doc(`meetings/${MEETING_ID}`).update({
+        status: 'completed',
+        resultNotes: 'Seguimiento acordado',
+        completedAt: new Date(),
+        resultRecordedBy: USER_A,
+        resultRecordedAt: new Date(),
+        updatedBy: USER_A,
+        updatedAt: new Date(),
+      }),
+    )
+
+    await assertFails(
+      organizerDb.doc(`meetings/${MEETING_ID}`).update({
+        status: 'scheduled',
+        updatedBy: USER_A,
+        updatedAt: new Date(),
+      }),
+    )
+
+    // Restore a scheduled meeting for remaining delete matrix via admin seed path
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await context.firestore().doc(`meetings/${MEETING_ID}`).update({
+        status: 'scheduled',
+        resultNotes: '',
+        completedAt: null,
+        resultRecordedBy: null,
+        resultRecordedAt: null,
+      })
+    })
+
+    // Group create
+    await assertSucceeds(
+      organizerDb.collection('meetings').add({
+        title: 'Reunión de grupo E2E',
+        type: 'group',
+        description: '',
+        notes: '',
+        resultNotes: '',
+        status: 'scheduled',
+        startAt: new Date('2026-09-20T17:00:00.000Z'),
+        endAt: new Date('2026-09-20T17:30:00.000Z'),
+        durationMinutes: 30,
+        timezone: 'Europe/Madrid',
+        organizerId: USER_A,
+        organizerName: 'Franklin',
+        contactId: null,
+        meetingAudience: 'group',
+        groupId: 'team_alpha',
+        groupNameSnapshot: 'Equipo Alpha',
+        participants: [{ type: 'user', userId: USER_B, name: 'B' }],
+        participantUserIds: [USER_B],
+        meetingProvider: 'none',
+        googleCalendarEventId: null,
+        googleCalendarHtmlLink: null,
+        googleMeetUrl: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: USER_A,
+        updatedBy: USER_A,
+        completedAt: null,
+        cancelledAt: null,
+      }),
+    )
+
     // DELETE — historical retention: only admin
     await assertFails(organizerDb.doc(`meetings/${MEETING_ID}`).delete())
     await assertFails(participantDb.doc(`meetings/${MEETING_ID}`).delete())

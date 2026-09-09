@@ -38,6 +38,9 @@ export function MeetingCard({ meeting, currentUserId, onOpen }: MeetingCardProps
             {getMeetingTypeLabel(meeting.type)} · {getMeetingModeLabel(meeting)}
           </p>
           <h3 className="mt-1 truncate text-base font-semibold text-hero-text">{meeting.title}</h3>
+          {meeting.meetingAudience === 'group' && meeting.groupNameSnapshot ? (
+            <p className="mt-1 text-xs text-hero-text/55">Grupo · {meeting.groupNameSnapshot}</p>
+          ) : null}
           {!isOrganizer ? (
             <p className="mt-1 text-xs text-hero-text/55">
               Organizada por {meeting.organizerName || 'un miembro de EXPANSIÓN'}

@@ -3362,6 +3362,21 @@ service cloud.firestore {
           request.resource.data.createdAt == resource.data.createdAt;
       }
 
+      function isValidMeetingStatusTransition() {
+        let before = resource.data.status;
+        let after = request.resource.data.status;
+        return before == after ||
+          (
+            (before == 'scheduled' || before == 'rescheduled') &&
+            after in ['scheduled', 'completed', 'cancelled', 'no_show']
+          );
+      }
+
+      function meetingAudienceValid() {
+        return !('meetingAudience' in request.resource.data) ||
+          request.resource.data.meetingAudience in ['individual', 'group'];
+      }
+
       allow create: if isSignedIn() &&
         isEmailVerified() &&
         request.resource.data.organizerId == request.auth.uid &&
@@ -3375,7 +3390,16 @@ service cloud.firestore {
         request.resource.data.durationMinutes >= 5 &&
         request.resource.data.durationMinutes <= 480 &&
         request.resource.data.participantUserIds is list &&
-        request.resource.data.participantUserIds.size() <= 50;
+        request.resource.data.participantUserIds.size() <= 50 &&
+        meetingAudienceValid() &&
+        (
+          !('meetingAudience' in request.resource.data) ||
+          request.resource.data.meetingAudience != 'group' ||
+          (
+            request.resource.data.groupId is string &&
+            request.resource.data.groupId.size() > 0
+          )
+        );
 
       // get: single-doc OR is fine (short-circuits; legacy organizer safe).
       allow get: if isAdmin() || isMeetingOrganizer() || isMeetingParticipant();
@@ -3391,7 +3415,9 @@ service cloud.firestore {
         request.auth.uid in resource.data.participantUserIds;
       allow list: if isAdmin();
 
-      allow update: if preservesMeetingAuditFields() && (
+      allow update: if preservesMeetingAuditFields() &&
+        isValidMeetingStatusTransition() &&
+        meetingAudienceValid() && (
         isAdmin() ||
         (
           isMeetingOrganizer() &&
@@ -3402,6 +3428,42 @@ service cloud.firestore {
       );
 
       allow delete: if isAdmin();
+
+      // meetings/{meetingId}/history/{historyId}
+      match /history/{historyId} {
+        function canAccessParentMeeting() {
+          let parent = get(/databases/$(database)/documents/meetings/$(meetingId)).data;
+          return isAdmin() ||
+            (
+              isSignedIn() &&
+              isEmailVerified() &&
+              (
+                parent.organizerId == request.auth.uid ||
+                (
+                  'participantUserIds' in parent &&
+                  parent.participantUserIds is list &&
+                  request.auth.uid in parent.participantUserIds
+                )
+              )
+            );
+        }
+
+        allow read: if canAccessParentMeeting();
+
+        allow create: if isSignedIn() &&
+          isEmailVerified() &&
+          request.resource.data.changedBy == request.auth.uid &&
+          request.resource.data.type in [
+            'created',
+            'rescheduled',
+            'completed',
+            'no_show',
+            'cancelled'
+          ] &&
+          get(/databases/$(database)/documents/meetings/$(meetingId)).data.organizerId == request.auth.uid;
+
+        allow update, delete: if false;
+      }
     }
 
     // -------------------------------------------------------------------------

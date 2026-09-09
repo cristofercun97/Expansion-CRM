@@ -16,10 +16,17 @@ import {
 import type {
   CreateMeetingInput,
   Meeting,
+  MeetingHistoryEvent,
+  MeetingHistoryType,
   MeetingStatus,
+  RecordMeetingResultInput,
+  RescheduleMeetingInput,
   UpdateMeetingInput,
 } from '@/features/agenda/types/meeting.types'
-import { deriveParticipantUserIds } from '@/features/agenda/utils/meetingAccess'
+import {
+  assertCanTransitionMeetingStatus,
+  deriveParticipantUserIds,
+} from '@/features/agenda/utils/meetingAccess'
 import { addMinutes } from '@/features/agenda/utils/meetingDateUtils'
 import { mapMeetingDocument } from '@/features/agenda/utils/meetingMappers'
 import { googleCalendarFunctionsService } from '@/features/agenda/services/google-calendar-functions.service'
@@ -54,6 +61,62 @@ function sortMeetingsByStartAt(meetings: Meeting[]): Meeting[] {
   })
 }
 
+function collectAttendeeEmails(
+  participants: CreateMeetingInput['participants'] | UpdateMeetingInput['participants'],
+): string[] {
+  const emails = new Set<string>()
+  for (const participant of participants) {
+    const email = participant.email?.trim().toLowerCase()
+    if (email) {
+      emails.add(email)
+    }
+  }
+  return [...emails]
+}
+
+function meetingHistoryCollection(meetingId: string) {
+  return collection(getFirebaseDb(), COLLECTIONS.meetings, meetingId, 'history')
+}
+
+async function appendMeetingHistory(options: {
+  meetingId: string
+  type: MeetingHistoryType
+  changedBy: string
+  previousStartAt?: Date | null
+  previousEndAt?: Date | null
+  newStartAt?: Date | null
+  newEndAt?: Date | null
+  reason?: string | null
+  resultNotes?: string | null
+}): Promise<void> {
+  const payload: Record<string, unknown> = {
+    type: options.type,
+    changedBy: options.changedBy,
+    changedAt: serverTimestamp(),
+  }
+
+  if (options.previousStartAt) {
+    payload.previousStartAt = Timestamp.fromDate(options.previousStartAt)
+  }
+  if (options.previousEndAt) {
+    payload.previousEndAt = Timestamp.fromDate(options.previousEndAt)
+  }
+  if (options.newStartAt) {
+    payload.newStartAt = Timestamp.fromDate(options.newStartAt)
+  }
+  if (options.newEndAt) {
+    payload.newEndAt = Timestamp.fromDate(options.newEndAt)
+  }
+  if (options.reason?.trim()) {
+    payload.reason = options.reason.trim()
+  }
+  if (options.resultNotes?.trim()) {
+    payload.resultNotes = options.resultNotes.trim()
+  }
+
+  await addDoc(meetingHistoryCollection(options.meetingId), payload)
+}
+
 async function runMeetingsListQuery(
   queryType: AgendaListQueryType,
   run: () => Promise<QuerySnapshot>,
@@ -72,7 +135,6 @@ async function runMeetingsListQuery(
 async function listMeetingsForUser(uid: string): Promise<Meeting[]> {
   const meetingsRef = collection(getFirebaseDb(), COLLECTIONS.meetings)
 
-  // Run sequentially so a single failing query is identifiable (not masked by Promise.all).
   const organizedSnapshot = await runMeetingsListQuery('organizer', () =>
     getDocs(query(meetingsRef, where('organizerId', '==', uid), orderBy('startAt', 'asc'))),
   )
@@ -123,6 +185,28 @@ async function getMeetingById(meetingId: string): Promise<Meeting | null> {
   return mapMeetingDocument(snapshot.id, snapshot.data())
 }
 
+async function listMeetingHistory(meetingId: string): Promise<MeetingHistoryEvent[]> {
+  const snapshot = await getDocs(
+    query(meetingHistoryCollection(meetingId), orderBy('changedAt', 'desc')),
+  )
+
+  return snapshot.docs.map((historyDoc) => {
+    const data = historyDoc.data()
+    return {
+      id: historyDoc.id,
+      type: data.type as MeetingHistoryType,
+      changedBy: typeof data.changedBy === 'string' ? data.changedBy : '',
+      changedAt: data.changedAt instanceof Timestamp ? data.changedAt : null,
+      previousStartAt: data.previousStartAt instanceof Timestamp ? data.previousStartAt : null,
+      previousEndAt: data.previousEndAt instanceof Timestamp ? data.previousEndAt : null,
+      newStartAt: data.newStartAt instanceof Timestamp ? data.newStartAt : null,
+      newEndAt: data.newEndAt instanceof Timestamp ? data.newEndAt : null,
+      reason: typeof data.reason === 'string' ? data.reason : null,
+      resultNotes: typeof data.resultNotes === 'string' ? data.resultNotes : null,
+    }
+  })
+}
+
 async function createMeetingActivity(
   organizerId: string,
   contactId: string | null,
@@ -145,11 +229,26 @@ async function createMeetingActivity(
   }
 }
 
+function assertOrganizer(existing: Meeting, organizerId: string, action: string): void {
+  if (existing.organizerId !== organizerId) {
+    throw new Error(`No puedes ${action} una reunión que no organizas.`)
+  }
+}
+
 async function createMeeting(organizerId: string, input: CreateMeetingInput): Promise<Meeting> {
   const endAt = addMinutes(input.startAt, input.durationMinutes)
   const db = getFirebaseDb()
   const meetingsRef = collection(db, COLLECTIONS.meetings)
-  const participantUserIds = deriveParticipantUserIds(input.participants)
+  const participantUserIds = deriveParticipantUserIds(input.participants, organizerId)
+
+  if (input.meetingAudience === 'group') {
+    if (!input.groupId?.trim()) {
+      throw new Error('Selecciona un grupo para la reunión grupal.')
+    }
+    if (participantUserIds.length === 0) {
+      throw new Error('El grupo no tiene miembros disponibles.')
+    }
+  }
 
   let googleCalendarEventId: string | null = null
   let googleCalendarHtmlLink: string | null = null
@@ -166,9 +265,7 @@ async function createMeeting(organizerId: string, input: CreateMeetingInput): Pr
       startAtIso: input.startAt.toISOString(),
       endAtIso: endAt.toISOString(),
       timezone: input.timezone,
-      attendeeEmails: input.participants
-        .map((participant) => participant.email?.trim().toLowerCase())
-        .filter((email): email is string => Boolean(email)),
+      attendeeEmails: collectAttendeeEmails(input.participants),
     })
 
     googleCalendarEventId = googleResult.googleCalendarEventId
@@ -193,7 +290,9 @@ async function createMeeting(organizerId: string, input: CreateMeetingInput): Pr
     organizerId,
     organizerName: input.organizerName.trim(),
     contactId: input.contactId,
-    groupId: null,
+    meetingAudience: input.meetingAudience,
+    groupId: input.meetingAudience === 'group' ? input.groupId : null,
+    groupNameSnapshot: input.meetingAudience === 'group' ? input.groupNameSnapshot : null,
     participants: input.participants,
     participantUserIds,
     meetingMode: input.meetingMode,
@@ -210,9 +309,26 @@ async function createMeeting(organizerId: string, input: CreateMeetingInput): Pr
     updatedBy: organizerId,
     completedAt: null,
     cancelledAt: null,
+    cancelledBy: null,
+    cancelReason: null,
+    resultRecordedBy: null,
+    resultRecordedAt: null,
   }
 
   const docRef = await addDoc(meetingsRef, payload)
+
+  try {
+    await appendMeetingHistory({
+      meetingId: docRef.id,
+      type: 'created',
+      changedBy: organizerId,
+      newStartAt: input.startAt,
+      newEndAt: endAt,
+    })
+  } catch {
+    // History is complementary; meeting already created.
+  }
+
   await createMeetingActivity(
     organizerId,
     input.contactId,
@@ -237,12 +353,15 @@ async function updateMeeting(
     throw new Error('No encontramos la reunión.')
   }
 
-  if (existing.organizerId !== organizerId) {
-    throw new Error('No puedes editar una reunión que no organizas.')
+  assertOrganizer(existing, organizerId, 'editar')
+  assertCanTransitionMeetingStatus(existing.status, existing.status)
+
+  if (existing.status !== 'scheduled' && existing.status !== 'rescheduled') {
+    throw new Error('Solo puedes editar reuniones programadas.')
   }
 
   const endAt = addMinutes(input.startAt, input.durationMinutes)
-  const participantUserIds = deriveParticipantUserIds(input.participants)
+  const participantUserIds = deriveParticipantUserIds(input.participants, organizerId)
   let googleCalendarEventId = existing.googleCalendarEventId
   let googleCalendarHtmlLink = existing.googleCalendarHtmlLink
   let googleMeetUrl = existing.googleMeetUrl
@@ -258,24 +377,26 @@ async function updateMeeting(
     Boolean(existing.googleCalendarEventId)
 
   if (shouldSyncGoogle && existing.googleCalendarEventId) {
-    const googleResult = await googleCalendarFunctionsService.updateGoogleCalendarEvent({
-      googleCalendarEventId: existing.googleCalendarEventId,
-      title: input.title,
-      description: input.description,
-      startAtIso: input.startAt.toISOString(),
-      endAtIso: endAt.toISOString(),
-      timezone: input.timezone,
-      attendeeEmails: input.participants
-        .map((participant) => participant.email?.trim().toLowerCase())
-        .filter((email): email is string => Boolean(email)),
-    })
+    try {
+      const googleResult = await googleCalendarFunctionsService.updateGoogleCalendarEvent({
+        googleCalendarEventId: existing.googleCalendarEventId,
+        title: input.title,
+        description: input.description,
+        startAtIso: input.startAt.toISOString(),
+        endAtIso: endAt.toISOString(),
+        timezone: input.timezone,
+        attendeeEmails: collectAttendeeEmails(input.participants),
+      })
 
-    googleCalendarEventId = googleResult.googleCalendarEventId
-    googleCalendarHtmlLink = googleResult.googleCalendarHtmlLink
-    googleMeetUrl = googleResult.googleMeetUrl ?? existing.googleMeetUrl
-    meetingUrl = googleMeetUrl
-    videoProvider = googleMeetUrl ? 'google_meet' : videoProvider
-    meetingProvider = googleMeetUrl ? 'google_meet' : meetingProvider
+      googleCalendarEventId = googleResult.googleCalendarEventId
+      googleCalendarHtmlLink = googleResult.googleCalendarHtmlLink
+      googleMeetUrl = googleResult.googleMeetUrl ?? existing.googleMeetUrl
+      meetingUrl = googleMeetUrl
+      videoProvider = googleMeetUrl ? 'google_meet' : videoProvider
+      meetingProvider = googleMeetUrl ? 'google_meet' : meetingProvider
+    } catch {
+      throw new Error('No se pudo actualizar la reunión en Google Calendar.')
+    }
   } else if (input.videoProvider === 'manual') {
     meetingUrl = input.meetingUrl
   } else if (input.meetingMode !== 'video') {
@@ -284,30 +405,43 @@ async function updateMeeting(
     meetingUrl = input.meetingUrl ?? existing.meetingUrl ?? existing.googleMeetUrl
   }
 
-  await updateDoc(doc(getFirebaseDb(), COLLECTIONS.meetings, meetingId), {
-    title: input.title,
-    type: input.type,
-    description: input.description,
-    notes: input.notes,
-    startAt: Timestamp.fromDate(input.startAt),
-    endAt: Timestamp.fromDate(endAt),
-    durationMinutes: input.durationMinutes,
-    timezone: input.timezone,
-    contactId: input.contactId,
-    participants: input.participants,
-    participantUserIds,
-    meetingMode: input.meetingMode,
-    videoProvider,
-    meetingUrl,
-    location: input.meetingMode === 'in_person' ? input.location : null,
-    meetingProvider,
-    googleCalendarEventId,
-    googleCalendarHtmlLink,
-    googleMeetUrl,
-    status: existing.status === 'cancelled' ? 'rescheduled' : existing.status,
-    updatedAt: serverTimestamp(),
-    updatedBy: organizerId,
-  })
+  try {
+    await updateDoc(doc(getFirebaseDb(), COLLECTIONS.meetings, meetingId), {
+      title: input.title,
+      type: input.type,
+      description: input.description,
+      notes: input.notes,
+      startAt: Timestamp.fromDate(input.startAt),
+      endAt: Timestamp.fromDate(endAt),
+      durationMinutes: input.durationMinutes,
+      timezone: input.timezone,
+      contactId: input.contactId,
+      meetingAudience: input.meetingAudience,
+      groupId: input.meetingAudience === 'group' ? input.groupId : null,
+      groupNameSnapshot: input.meetingAudience === 'group' ? input.groupNameSnapshot : null,
+      participants: input.participants,
+      participantUserIds,
+      meetingMode: input.meetingMode,
+      videoProvider,
+      meetingUrl,
+      location: input.meetingMode === 'in_person' ? input.location : null,
+      meetingProvider,
+      googleCalendarEventId,
+      googleCalendarHtmlLink,
+      googleMeetUrl,
+      status: 'scheduled',
+      updatedAt: serverTimestamp(),
+      updatedBy: organizerId,
+    })
+  } catch (error) {
+    if (shouldSyncGoogle) {
+      throw new Error(
+        'La reunión se actualizó en Google pero no pudo sincronizarse con EXPANSIÓN.',
+        { cause: error },
+      )
+    }
+    throw error
+  }
 
   const updated = await getMeetingById(meetingId)
   if (!updated) {
@@ -317,27 +451,129 @@ async function updateMeeting(
   return updated
 }
 
-async function cancelMeeting(meetingId: string, organizerId: string): Promise<Meeting> {
+async function rescheduleMeeting(
+  meetingId: string,
+  organizerId: string,
+  input: RescheduleMeetingInput,
+): Promise<Meeting> {
   const existing = await getMeetingById(meetingId)
   if (!existing) {
     throw new Error('No encontramos la reunión.')
   }
 
-  if (existing.organizerId !== organizerId) {
-    throw new Error('No puedes cancelar una reunión que no organizas.')
+  assertOrganizer(existing, organizerId, 'reprogramar')
+  assertCanTransitionMeetingStatus(existing.status, 'scheduled')
+
+  if (existing.status !== 'scheduled' && existing.status !== 'rescheduled') {
+    throw new Error('Solo puedes reprogramar reuniones programadas.')
   }
+
+  const endAt = addMinutes(input.startAt, input.durationMinutes)
+  const previousStartAt = existing.startAt?.toDate?.() ?? null
+  const previousEndAt = existing.endAt?.toDate?.() ?? null
 
   if (existing.googleCalendarEventId) {
-    await googleCalendarFunctionsService.cancelGoogleCalendarEvent({
-      googleCalendarEventId: existing.googleCalendarEventId,
-    })
+    try {
+      await googleCalendarFunctionsService.updateGoogleCalendarEvent({
+        googleCalendarEventId: existing.googleCalendarEventId,
+        title: existing.title,
+        description: existing.description,
+        startAtIso: input.startAt.toISOString(),
+        endAtIso: endAt.toISOString(),
+        timezone: input.timezone,
+        attendeeEmails: collectAttendeeEmails(existing.participants),
+      })
+    } catch {
+      throw new Error('No se pudo actualizar la reunión en Google Calendar.')
+    }
   }
 
-  await updateDoc(doc(getFirebaseDb(), COLLECTIONS.meetings, meetingId), {
-    status: 'cancelled',
-    cancelledAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-    updatedBy: organizerId,
+  try {
+    await updateDoc(doc(getFirebaseDb(), COLLECTIONS.meetings, meetingId), {
+      startAt: Timestamp.fromDate(input.startAt),
+      endAt: Timestamp.fromDate(endAt),
+      durationMinutes: input.durationMinutes,
+      timezone: input.timezone,
+      status: 'scheduled',
+      updatedAt: serverTimestamp(),
+      updatedBy: organizerId,
+    })
+  } catch (error) {
+    if (existing.googleCalendarEventId) {
+      throw new Error(
+        'La reunión se actualizó en Google pero no pudo sincronizarse con EXPANSIÓN.',
+        { cause: error },
+      )
+    }
+    throw error
+  }
+
+  await appendMeetingHistory({
+    meetingId,
+    type: 'rescheduled',
+    changedBy: organizerId,
+    previousStartAt,
+    previousEndAt,
+    newStartAt: input.startAt,
+    newEndAt: endAt,
+    reason: input.reason?.trim() || null,
+  })
+
+  const updated = await getMeetingById(meetingId)
+  if (!updated) {
+    throw new Error('La reunión se reprogramó, pero no pudimos cargarla.')
+  }
+
+  return updated
+}
+
+async function cancelMeeting(
+  meetingId: string,
+  organizerId: string,
+  cancelReason?: string,
+): Promise<Meeting> {
+  const existing = await getMeetingById(meetingId)
+  if (!existing) {
+    throw new Error('No encontramos la reunión.')
+  }
+
+  assertOrganizer(existing, organizerId, 'cancelar')
+  assertCanTransitionMeetingStatus(existing.status, 'cancelled')
+
+  if (existing.googleCalendarEventId) {
+    try {
+      await googleCalendarFunctionsService.cancelGoogleCalendarEvent({
+        googleCalendarEventId: existing.googleCalendarEventId,
+      })
+    } catch {
+      throw new Error('No se pudo cancelar la reunión en Google Calendar.')
+    }
+  }
+
+  try {
+    await updateDoc(doc(getFirebaseDb(), COLLECTIONS.meetings, meetingId), {
+      status: 'cancelled',
+      cancelledAt: serverTimestamp(),
+      cancelledBy: organizerId,
+      cancelReason: cancelReason?.trim() || null,
+      updatedAt: serverTimestamp(),
+      updatedBy: organizerId,
+    })
+  } catch (error) {
+    if (existing.googleCalendarEventId) {
+      throw new Error(
+        'La reunión se actualizó en Google pero no pudo sincronizarse con EXPANSIÓN.',
+        { cause: error },
+      )
+    }
+    throw error
+  }
+
+  await appendMeetingHistory({
+    meetingId,
+    type: 'cancelled',
+    changedBy: organizerId,
+    reason: cancelReason?.trim() || null,
   })
 
   await createMeetingActivity(
@@ -360,28 +596,57 @@ async function completeMeeting(
   resultNotes: string,
   status: Extract<MeetingStatus, 'completed' | 'no_show'>,
 ): Promise<Meeting> {
+  return recordMeetingResult(meetingId, organizerId, {
+    outcome: status,
+    resultNotes,
+  })
+}
+
+async function recordMeetingResult(
+  meetingId: string,
+  organizerId: string,
+  input: RecordMeetingResultInput,
+): Promise<Meeting> {
   const existing = await getMeetingById(meetingId)
   if (!existing) {
     throw new Error('No encontramos la reunión.')
   }
 
-  if (existing.organizerId !== organizerId) {
-    throw new Error('No puedes actualizar una reunión que no organizas.')
+  assertOrganizer(existing, organizerId, 'registrar el resultado de')
+
+  if (input.outcome === 'cancelled') {
+    return cancelMeeting(meetingId, organizerId, input.cancelReason ?? input.resultNotes)
+  }
+
+  assertCanTransitionMeetingStatus(existing.status, input.outcome)
+
+  const notes = input.resultNotes?.trim() ?? ''
+  if (input.outcome === 'completed' && notes.length < 3) {
+    throw new Error('Añade un resumen del resultado (mínimo 3 caracteres).')
   }
 
   await updateDoc(doc(getFirebaseDb(), COLLECTIONS.meetings, meetingId), {
-    status,
-    resultNotes: resultNotes.trim(),
+    status: input.outcome,
+    resultNotes: notes,
     completedAt: serverTimestamp(),
+    resultRecordedBy: organizerId,
+    resultRecordedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
     updatedBy: organizerId,
+  })
+
+  await appendMeetingHistory({
+    meetingId,
+    type: input.outcome,
+    changedBy: organizerId,
+    resultNotes: notes || null,
   })
 
   await createMeetingActivity(
     organizerId,
     existing.contactId,
-    status === 'completed'
-      ? `Reunión realizada: ${existing.title}${resultNotes.trim() ? ` · ${resultNotes.trim()}` : ''}`
+    input.outcome === 'completed'
+      ? `Reunión realizada: ${existing.title}${notes ? ` · ${notes}` : ''}`
       : `Reunión sin asistencia: ${existing.title}`,
   )
 
@@ -397,10 +662,13 @@ export const meetingsService = {
   listMeetingsForUser,
   listMeetingsByOrganizer,
   getMeetingById,
+  listMeetingHistory,
   createMeeting,
   updateMeeting,
+  rescheduleMeeting,
   cancelMeeting,
   completeMeeting,
+  recordMeetingResult,
 }
 
 export type { AgendaListQueryType }

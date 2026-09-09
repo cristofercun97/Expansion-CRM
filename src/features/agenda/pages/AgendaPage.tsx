@@ -6,6 +6,8 @@ import { useToast } from '@/components/ui/toast/ToastProvider'
 import { GoogleCalendarStatusCard } from '@/features/agenda/components/GoogleCalendarStatusCard'
 import { MeetingCard } from '@/features/agenda/components/MeetingCard'
 import { MeetingDetailModal } from '@/features/agenda/components/MeetingDetailModal'
+import { RecordMeetingResultModal } from '@/features/agenda/components/RecordMeetingResultModal'
+import { RescheduleMeetingModal } from '@/features/agenda/components/RescheduleMeetingModal'
 import { ScheduleMeetingModal } from '@/features/agenda/components/ScheduleMeetingModal'
 import { useMeetings } from '@/features/agenda/hooks/useMeetings'
 import type {
@@ -49,6 +51,8 @@ export function AgendaPage() {
   const [scheduleMode, setScheduleMode] = useState<'create' | 'edit'>('create')
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null)
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null)
+  const [rescheduleMeeting, setRescheduleMeeting] = useState<Meeting | null>(null)
+  const [resultMeeting, setResultMeeting] = useState<Meeting | null>(null)
   const [preselectedContactId, setPreselectedContactId] = useState<string | undefined>()
   const [scheduleSession, setScheduleSession] = useState(0)
   const [consumedScheduleQuery, setConsumedScheduleQuery] = useState('')
@@ -438,8 +442,36 @@ export function AgendaPage() {
           setScheduleSession((value) => value + 1)
           setScheduleOpen(true)
         }}
+        onReschedule={(meeting) => {
+          setSelectedMeeting(null)
+          setRescheduleMeeting(meeting)
+        }}
+        onRecordResult={(meeting) => {
+          setSelectedMeeting(null)
+          setResultMeeting(meeting)
+        }}
         onChanged={(meeting) => {
           setSelectedMeeting(meeting)
+          void reload()
+        }}
+      />
+
+      <RescheduleMeetingModal
+        meeting={rescheduleMeeting}
+        organizerId={organizerId}
+        onClose={() => setRescheduleMeeting(null)}
+        onSaved={() => {
+          setRescheduleMeeting(null)
+          void reload()
+        }}
+      />
+
+      <RecordMeetingResultModal
+        meeting={resultMeeting}
+        organizerId={organizerId}
+        onClose={() => setResultMeeting(null)}
+        onSaved={() => {
+          setResultMeeting(null)
           void reload()
         }}
       />

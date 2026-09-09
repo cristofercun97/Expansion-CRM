@@ -4,6 +4,7 @@ import {
 } from 'firebase/firestore'
 import type {
   Meeting,
+  MeetingAudience,
   MeetingParticipant,
   MeetingStatus,
   MeetingType,
@@ -74,6 +75,14 @@ function mapType(value: unknown): MeetingType {
   return 'other'
 }
 
+function mapAudience(value: unknown, groupId: string | null): MeetingAudience {
+  if (value === 'group' || value === 'individual') {
+    return value
+  }
+
+  return groupId ? 'group' : 'individual'
+}
+
 export function mapMeetingDocument(id: string, data: DocumentData): Meeting {
   const participants = Array.isArray(data.participants)
     ? data.participants
@@ -89,6 +98,8 @@ export function mapMeetingDocument(id: string, data: DocumentData): Meeting {
     meetingProvider: data.meetingProvider,
     googleMeetUrl: data.googleMeetUrl,
   })
+
+  const groupId = asNullableString(data.groupId)
 
   return {
     id,
@@ -108,7 +119,9 @@ export function mapMeetingDocument(id: string, data: DocumentData): Meeting {
     organizerId: asString(data.organizerId),
     organizerName: asString(data.organizerName),
     contactId: asNullableString(data.contactId),
-    groupId: asNullableString(data.groupId),
+    meetingAudience: mapAudience(data.meetingAudience, groupId),
+    groupId,
+    groupNameSnapshot: asNullableString(data.groupNameSnapshot),
     participants,
     participantUserIds: Array.isArray(data.participantUserIds)
       ? data.participantUserIds
@@ -129,5 +142,9 @@ export function mapMeetingDocument(id: string, data: DocumentData): Meeting {
     updatedBy: asString(data.updatedBy),
     completedAt: data.completedAt instanceof Timestamp ? data.completedAt : null,
     cancelledAt: data.cancelledAt instanceof Timestamp ? data.cancelledAt : null,
+    cancelledBy: asNullableString(data.cancelledBy),
+    cancelReason: asNullableString(data.cancelReason),
+    resultRecordedBy: asNullableString(data.resultRecordedBy),
+    resultRecordedAt: data.resultRecordedAt instanceof Timestamp ? data.resultRecordedAt : null,
   }
 }

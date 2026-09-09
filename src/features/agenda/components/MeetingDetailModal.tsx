@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react'
-import { Loader2, Video, X } from 'lucide-react'
-import { Button, Textarea } from '@/components/ui'
+import { useEffect, useMemo, useState } from 'react'
+import { Video, X } from 'lucide-react'
+import { Button } from '@/components/ui'
 import type { Meeting } from '@/features/agenda/types/meeting.types'
-import { meetingsService } from '@/features/agenda/services/meetings.service'
 import { canManageMeeting } from '@/features/agenda/utils/meetingAccess'
 import { formatMeetingDateTimeRange } from '@/features/agenda/utils/meetingDateUtils'
 import { getMeetingStatusLabel, getMeetingTypeLabel } from '@/features/agenda/utils/meetingLabels'
 import { getMeetingJoinInfo, getMeetingModeLabel } from '@/features/agenda/utils/meetingModeUtils'
+
+const PARTICIPANT_PREVIEW_LIMIT = 5
 
 type MeetingDetailModalProps = {
   meeting: Meeting | null
@@ -14,6 +15,8 @@ type MeetingDetailModalProps = {
   isAdmin: boolean
   onClose: () => void
   onEdit: (meeting: Meeting) => void
+  onReschedule: (meeting: Meeting) => void
+  onRecordResult: (meeting: Meeting) => void
   onChanged: (meeting: Meeting) => void
 }
 
@@ -23,18 +26,15 @@ export function MeetingDetailModal({
   isAdmin,
   onClose,
   onEdit,
-  onChanged,
+  onReschedule,
+  onRecordResult,
 }: MeetingDetailModalProps) {
-  const [resultNotes, setResultNotes] = useState(meeting?.resultNotes ?? '')
-  const [notesSourceId, setNotesSourceId] = useState(meeting?.id ?? null)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
+  const [showAllParticipants, setShowAllParticipants] = useState(false)
+  const [sourceId, setSourceId] = useState(meeting?.id ?? null)
 
-  const meetingId = meeting?.id ?? null
-  if (meetingId !== notesSourceId) {
-    setNotesSourceId(meetingId)
-    setResultNotes(meeting?.resultNotes ?? '')
-    setError('')
+  if (meeting && meeting.id !== sourceId) {
+    setSourceId(meeting.id)
+    setShowAllParticipants(false)
   }
 
   useEffect(() => {
@@ -57,6 +57,16 @@ export function MeetingDetailModal({
     }
   }, [meeting, onClose])
 
+  const visibleParticipants = useMemo(() => {
+    if (!meeting) {
+      return []
+    }
+    if (showAllParticipants) {
+      return meeting.participants
+    }
+    return meeting.participants.slice(0, PARTICIPANT_PREVIEW_LIMIT)
+  }, [meeting, showAllParticipants])
+
   if (!meeting) {
     return null
   }
@@ -68,23 +78,7 @@ export function MeetingDetailModal({
   })
   const isOrganizer = meeting.organizerId === currentUserId
   const join = getMeetingJoinInfo(meeting)
-
-  async function runAction(action: () => Promise<Meeting>) {
-    setBusy(true)
-    setError('')
-    try {
-      const updated = await action()
-      onChanged(updated)
-    } catch (actionError) {
-      setError(
-        actionError instanceof Error
-          ? actionError.message
-          : 'No pudimos actualizar la reunión.',
-      )
-    } finally {
-      setBusy(false)
-    }
-  }
+  const hiddenParticipants = Math.max(0, meeting.participants.length - PARTICIPANT_PREVIEW_LIMIT)
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center sm:p-6">
@@ -115,6 +109,11 @@ export function MeetingDetailModal({
               {' · '}
               {meeting.durationMinutes} min
             </p>
+            {meeting.meetingAudience === 'group' && meeting.groupNameSnapshot ? (
+              <p className="mt-2 text-sm text-hero-text/70">
+                Grupo: <span className="font-medium text-hero-text">{meeting.groupNameSnapshot}</span>
+              </p>
+            ) : null}
             {!isOrganizer ? (
               <p className="mt-2 text-sm text-hero-text/65">
                 Organizada por {meeting.organizerName || 'un miembro de EXPANSIÓN'}
@@ -148,7 +147,7 @@ export function MeetingDetailModal({
               {meeting.participants.length === 0 ? (
                 <li className="text-hero-text/55">Sin participantes añadidos</li>
               ) : (
-                meeting.participants.map((participant, index) => (
+                visibleParticipants.map((participant, index) => (
                   <li key={`${participant.name}-${index}`}>
                     {participant.name}
                     {participant.email ? ` · ${participant.email}` : ''}
@@ -157,6 +156,15 @@ export function MeetingDetailModal({
                 ))
               )}
             </ul>
+            {!showAllParticipants && hiddenParticipants > 0 ? (
+              <button
+                type="button"
+                className="mt-2 text-sm font-medium text-teal-accent hover:underline"
+                onClick={() => setShowAllParticipants(true)}
+              >
+                +{hiddenParticipants} participantes · Ver participantes
+              </button>
+            ) : null}
           </div>
           {meeting.meetingMode === 'in_person' && meeting.location ? (
             <p>
@@ -181,102 +189,45 @@ export function MeetingDetailModal({
         </div>
 
         {canManage && meeting.status === 'scheduled' ? (
-          <div className="mt-6 space-y-3 border-t border-white/10 pt-4">
-            <Textarea
-              label="Resultado / notas"
-              placeholder="¿Qué ocurrió en la reunión?"
-              value={resultNotes}
-              onChange={(event) => setResultNotes(event.target.value)}
-              className="min-h-24 border-white/15 bg-white/10 text-hero-text"
-            />
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                size="sm"
-                disabled={busy}
-                onClick={() => onEdit(meeting)}
-                className="bg-gold text-petrol-deep hover:bg-gold-light"
-              >
-                Editar / reprogramar
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                disabled={busy}
-                onClick={() =>
-                  void runAction(() =>
-                    meetingsService.completeMeeting(
-                      meeting.id,
-                      meeting.organizerId,
-                      resultNotes,
-                      'completed',
-                    ),
-                  )
-                }
-                className="bg-teal-accent/20 text-teal-accent hover:bg-teal-accent/30"
-              >
-                Marcar como realizada
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={busy}
-                onClick={() =>
-                  void runAction(() =>
-                    meetingsService.completeMeeting(
-                      meeting.id,
-                      meeting.organizerId,
-                      resultNotes,
-                      'no_show',
-                    ),
-                  )
-                }
-                className="border-white/20 bg-white/5 text-hero-text hover:bg-white/10"
-              >
-                No asistió
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={busy}
-                onClick={() =>
-                  void runAction(() =>
-                    meetingsService.cancelMeeting(meeting.id, meeting.organizerId),
-                  )
-                }
-                className="border-red-400/30 bg-red-500/10 text-red-200 hover:bg-red-500/15"
-              >
-                Cancelar reunión
-              </Button>
-            </div>
+          <div className="mt-6 flex flex-wrap gap-2 border-t border-white/10 pt-4">
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => onEdit(meeting)}
+              className="bg-gold text-petrol-deep hover:bg-gold-light"
+            >
+              Editar
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => onReschedule(meeting)}
+              className="border-white/20 bg-white/5 text-hero-text hover:bg-white/10"
+            >
+              Reprogramar
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => onRecordResult(meeting)}
+              className="bg-teal-accent/20 text-teal-accent hover:bg-teal-accent/30"
+            >
+              Registrar resultado
+            </Button>
           </div>
         ) : null}
 
         {!canManage ? (
           <p className="mt-6 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-hero-text/70">
-            Estás invitado como participante. Puedes consultar el detalle y entrar a Meet.
-            Solo el organizador puede editar o marcar el resultado.
+            Estás invitado como participante. Puedes consultar el detalle y entrar a la reunión.
+            Solo el organizador puede editar, reprogramar o registrar el resultado.
           </p>
         ) : null}
 
         {meeting.resultNotes ? (
           <p className="mt-5 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-hero-text/80">
             <span className="font-medium text-hero-text">Resultado:</span> {meeting.resultNotes}
-          </p>
-        ) : null}
-
-        {error ? (
-          <p className="mt-4 rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-            {error}
-          </p>
-        ) : null}
-
-        {busy ? (
-          <p className="mt-3 flex items-center gap-2 text-sm text-hero-text/60">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Actualizando...
           </p>
         ) : null}
       </div>

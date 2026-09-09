@@ -2,6 +2,7 @@ import type { Contact } from '@/features/contacts/types/contact.types'
 import type {
   CreateMeetingInput,
   Meeting,
+  MeetingAudience,
   MeetingFormValues,
   MeetingMode,
   MeetingParticipant,
@@ -44,6 +45,10 @@ export function createEmptyMeetingFormValues(
     durationMinutes: 30,
     customDurationMinutes: '',
     contactId: '',
+    meetingAudience: 'individual',
+    groupId: '',
+    groupNameSnapshot: '',
+    groupMemberSelectionMode: 'all',
     participants: [],
     meetingMode: 'video',
     videoLinkMethod: 'manual',
@@ -74,6 +79,10 @@ function formFromMeeting(meeting: Meeting): Partial<MeetingFormValues> {
     durationMinutes: isPresetDuration ? meeting.durationMinutes : 0,
     customDurationMinutes: isPresetDuration ? '' : String(meeting.durationMinutes),
     contactId: meeting.contactId ?? '',
+    meetingAudience: meeting.meetingAudience,
+    groupId: meeting.groupId ?? '',
+    groupNameSnapshot: meeting.groupNameSnapshot ?? '',
+    groupMemberSelectionMode: 'partial',
     participants: meeting.participants,
     meetingMode: meeting.meetingMode,
     videoLinkMethod,
@@ -163,6 +172,17 @@ export function validateMeetingForm(values: MeetingFormValues): MeetingFormError
     errors.customDurationMinutes = 'La duración debe estar entre 5 y 480 minutos.'
   }
 
+  if (values.meetingAudience === 'group') {
+    if (!values.groupId.trim()) {
+      errors.groupId = 'Selecciona un grupo.'
+    }
+
+    const userParticipants = values.participants.filter((item) => item.type === 'user')
+    if (userParticipants.length === 0) {
+      errors.form = 'El grupo no tiene miembros disponibles o no hay participantes seleccionados.'
+    }
+  }
+
   if (values.meetingMode === 'video' && values.videoLinkMethod === 'manual') {
     const url = values.meetingUrl.trim()
     if (!url) {
@@ -219,15 +239,26 @@ export function toCreateMeetingInput(
       ? values.location.trim()
       : null
 
+  const meetingAudience: MeetingAudience = values.meetingAudience
+  const groupId =
+    meetingAudience === 'group' && values.groupId.trim() ? values.groupId.trim() : null
+  const groupNameSnapshot =
+    meetingAudience === 'group' && values.groupNameSnapshot.trim()
+      ? values.groupNameSnapshot.trim()
+      : null
+
   return {
     title: values.title.trim(),
-    type: values.type,
+    type: meetingAudience === 'group' ? 'group' : values.type,
     description: values.description.trim(),
     notes: values.notes.trim(),
     startAt,
     durationMinutes: resolveDurationMinutes(values),
     timezone: getBrowserTimezone(),
-    contactId: values.contactId.trim() || null,
+    contactId: meetingAudience === 'individual' ? values.contactId.trim() || null : null,
+    meetingAudience,
+    groupId,
+    groupNameSnapshot,
     participants: values.participants.map(normalizeParticipant),
     meetingMode,
     videoProvider,
@@ -252,6 +283,9 @@ export function toUpdateMeetingInput(
     durationMinutes: createInput.durationMinutes,
     timezone: createInput.timezone,
     contactId: createInput.contactId,
+    meetingAudience: createInput.meetingAudience,
+    groupId: createInput.groupId,
+    groupNameSnapshot: createInput.groupNameSnapshot,
     participants: createInput.participants,
     meetingMode: createInput.meetingMode,
     videoProvider: createInput.videoProvider,

@@ -21,14 +21,16 @@ import {
 } from '@/features/agenda/utils/meetingLabels'
 import { meetingsService } from '@/features/agenda/services/meetings.service'
 import { googleCalendarFunctionsService } from '@/features/agenda/services/google-calendar-functions.service'
-import { teamService } from '@/features/team/services/team.service'
-import type { TeamMember } from '@/features/team/types/team.types'
-
-type InternalMemberOption = {
-  userId: string
-  name: string
-  email?: string
-}
+import {
+  assertParticipantsWithinGroup,
+  buildGroupParticipantsFromMembers,
+  type AccessibleTeamOption,
+  type GroupMemberOption,
+} from '@/features/agenda/utils/meetingGroupUtils'
+import {
+  listAccessibleTeamsForScheduling,
+  listActiveGroupMembersForScheduling,
+} from '@/features/agenda/utils/meetingGroupService'
 
 type ScheduleMeetingModalProps = {
   open: boolean
@@ -71,7 +73,11 @@ export function ScheduleMeetingModal({
   const [externalEmail, setExternalEmail] = useState('')
   const [contactQuery, setContactQuery] = useState('')
   const [memberQuery, setMemberQuery] = useState('')
-  const [internalMembers, setInternalMembers] = useState<InternalMemberOption[]>([])
+  const [accessibleTeams, setAccessibleTeams] = useState<AccessibleTeamOption[]>([])
+  const [groupMembers, setGroupMembers] = useState<GroupMemberOption[]>([])
+  const [individualMembers, setIndividualMembers] = useState<GroupMemberOption[]>([])
+  const [loadingGroups, setLoadingGroups] = useState(false)
+  const [loadingGroupMembers, setLoadingGroupMembers] = useState(false)
 
   useEffect(() => {
     if (!open) {
@@ -101,32 +107,33 @@ export function ScheduleMeetingModal({
     let cancelled = false
 
     void (async () => {
+      setLoadingGroups(true)
       try {
-        const team = await teamService.getMyTeam(organizerId)
-        if (!team || cancelled) {
+        const teams = await listAccessibleTeamsForScheduling(organizerId)
+        if (!cancelled) {
+          setAccessibleTeams(teams)
+        }
+
+        const owned = teams.find((team) => team.ownerUid === organizerId) ?? teams[0]
+        if (owned && !cancelled) {
+          const members = await listActiveGroupMembersForScheduling({
+            team: owned,
+            organizerId,
+          })
           if (!cancelled) {
-            setInternalMembers([])
+            setIndividualMembers(members)
           }
-          return
+        } else if (!cancelled) {
+          setIndividualMembers([])
         }
-
-        const members = await teamService.getTeamMembersByTeamId(team.id, organizerId)
-        if (cancelled) {
-          return
-        }
-
-        const options: InternalMemberOption[] = members
-          .filter((member: TeamMember) => member.status === 'active' && member.memberUid !== organizerId)
-          .map((member: TeamMember) => ({
-            userId: member.memberUid,
-            name: member.memberName?.trim() || member.memberEmail?.trim() || 'Miembro',
-            email: member.memberEmail?.trim() || undefined,
-          }))
-
-        setInternalMembers(options)
       } catch {
         if (!cancelled) {
-          setInternalMembers([])
+          setAccessibleTeams([])
+          setIndividualMembers([])
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingGroups(false)
         }
       }
     })()
@@ -135,6 +142,60 @@ export function ScheduleMeetingModal({
       cancelled = true
     }
   }, [open, organizerId])
+
+  useEffect(() => {
+    if (!open || !organizerId || values.meetingAudience !== 'group' || !values.groupId) {
+      return
+    }
+
+    const team = accessibleTeams.find((item) => item.id === values.groupId)
+    if (!team) {
+      return
+    }
+
+    let cancelled = false
+
+    void (async () => {
+      setLoadingGroupMembers(true)
+      try {
+        const members = await listActiveGroupMembersForScheduling({
+          team,
+          organizerId,
+        })
+        if (cancelled) {
+          return
+        }
+
+        setGroupMembers(members)
+
+        if (values.groupMemberSelectionMode === 'all') {
+          setValues((current) => ({
+            ...current,
+            participants: buildGroupParticipantsFromMembers(members),
+            groupNameSnapshot: team.name,
+          }))
+        }
+      } catch {
+        if (!cancelled) {
+          setGroupMembers([])
+          setErrors((current) => ({
+            ...current,
+            form: 'No tienes permiso para agendar reuniones para este grupo.',
+          }))
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingGroupMembers(false)
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+    // Intentionally omit values.participants / selection mode to avoid loops; handled in handlers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessibleTeams, open, organizerId, values.groupId, values.meetingAudience])
 
   const filteredContacts = useMemo(() => {
     const query = contactQuery.trim().toLowerCase()
@@ -153,11 +214,18 @@ export function ScheduleMeetingModal({
 
   const filteredMembers = useMemo(() => {
     const query = memberQuery.trim().toLowerCase()
-    const available = internalMembers.filter(
-      (member) => !values.participants.some((item) => item.userId === member.userId),
-    )
+    const source =
+      values.meetingAudience === 'group' ? groupMembers : individualMembers
+
+    const available =
+      values.meetingAudience === 'group'
+        ? source
+        : source.filter(
+            (member) => !values.participants.some((item) => item.userId === member.userId),
+          )
+
     if (!query) {
-      return available.slice(0, 8)
+      return available.slice(0, 12)
     }
 
     return available
@@ -166,8 +234,14 @@ export function ScheduleMeetingModal({
           member.name.toLowerCase().includes(query) ||
           (member.email?.toLowerCase().includes(query) ?? false),
       )
-      .slice(0, 8)
-  }, [internalMembers, memberQuery, values.participants])
+      .slice(0, 12)
+  }, [
+    groupMembers,
+    individualMembers,
+    memberQuery,
+    values.meetingAudience,
+    values.participants,
+  ])
 
   const contactsWithoutEmail = useMemo(
     () =>
@@ -202,7 +276,7 @@ export function ScheduleMeetingModal({
     })
   }
 
-  function addInternalParticipant(member: InternalMemberOption) {
+  function addInternalParticipant(member: GroupMemberOption) {
     setValues((current) => {
       if (current.participants.some((item) => item.userId === member.userId)) {
         return current
@@ -225,6 +299,50 @@ export function ScheduleMeetingModal({
       return {
         ...current,
         participants: [...current.participants, participant],
+      }
+    })
+  }
+
+  function selectAllGroupMembers() {
+    setValues((current) => ({
+      ...current,
+      groupMemberSelectionMode: 'all',
+      participants: buildGroupParticipantsFromMembers(groupMembers),
+    }))
+  }
+
+  function clearGroupMembers() {
+    setValues((current) => ({
+      ...current,
+      groupMemberSelectionMode: 'partial',
+      participants: current.participants.filter((item) => item.type !== 'user'),
+    }))
+  }
+
+  function toggleGroupMember(member: GroupMemberOption) {
+    setValues((current) => {
+      const exists = current.participants.some((item) => item.userId === member.userId)
+      const withoutUser = current.participants.filter((item) => item.userId !== member.userId)
+      if (exists) {
+        return {
+          ...current,
+          groupMemberSelectionMode: 'partial',
+          participants: withoutUser,
+        }
+      }
+
+      return {
+        ...current,
+        groupMemberSelectionMode: 'partial',
+        participants: [
+          ...withoutUser,
+          {
+            type: 'user',
+            userId: member.userId,
+            name: member.name,
+            email: member.email,
+          },
+        ],
       }
     })
   }
@@ -287,6 +405,11 @@ export function ScheduleMeetingModal({
 
     setSubmitting(true)
     try {
+      if (values.meetingAudience === 'group') {
+        const allowed = new Set(groupMembers.map((member) => member.userId))
+        assertParticipantsWithinGroup(values.participants, allowed)
+      }
+
       if (mode === 'edit' && meeting) {
         const syncGoogle =
           values.meetingMode === 'video' &&
@@ -366,6 +489,139 @@ export function ScheduleMeetingModal({
             />
             {errors.title ? <p className="mt-1 text-xs text-red-600">{errors.title}</p> : null}
           </div>
+
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium text-text-dark">Tipo de participación</legend>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-petrol-dark/15 px-3 text-sm">
+                <input
+                  type="radio"
+                  name="meeting-audience"
+                  checked={values.meetingAudience === 'individual'}
+                  onChange={() =>
+                    setValues((current) => ({
+                      ...current,
+                      meetingAudience: 'individual',
+                      groupId: '',
+                      groupNameSnapshot: '',
+                      type: current.type === 'group' ? 'follow_up' : current.type,
+                    }))
+                  }
+                />
+                Reunión individual
+              </label>
+              <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-petrol-dark/15 px-3 text-sm">
+                <input
+                  type="radio"
+                  name="meeting-audience"
+                  checked={values.meetingAudience === 'group'}
+                  onChange={() =>
+                    setValues((current) => ({
+                      ...current,
+                      meetingAudience: 'group',
+                      type: 'group',
+                      contactId: '',
+                      participants: current.participants.filter((item) => item.type === 'user'),
+                    }))
+                  }
+                />
+                Reunión de grupo
+              </label>
+            </div>
+          </fieldset>
+
+          {values.meetingAudience === 'group' ? (
+            <div className="space-y-3 rounded-2xl border border-petrol-dark/10 bg-petrol-dark/[0.02] p-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-text-dark" htmlFor="meeting-group">
+                  Grupo
+                </label>
+                <select
+                  id="meeting-group"
+                  value={values.groupId}
+                  disabled={loadingGroups}
+                  onChange={(event) => {
+                    const team = accessibleTeams.find((item) => item.id === event.target.value)
+                    setValues((current) => ({
+                      ...current,
+                      groupId: event.target.value,
+                      groupNameSnapshot: team?.name ?? '',
+                      participants: [],
+                      groupMemberSelectionMode: 'all',
+                    }))
+                    setGroupMembers([])
+                  }}
+                  className="h-11 w-full rounded-xl border border-petrol-dark/15 bg-white px-3 text-sm text-text-dark"
+                >
+                  <option value="">Selecciona un grupo</option>
+                  {accessibleTeams.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name}
+                    </option>
+                  ))}
+                </select>
+                {errors.groupId ? <p className="mt-1 text-xs text-red-600">{errors.groupId}</p> : null}
+                {loadingGroups ? (
+                  <p className="mt-1 text-xs text-text-soft">Cargando grupos...</p>
+                ) : null}
+              </div>
+
+              {values.groupId ? (
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-text-dark">Participantes</p>
+                    <div className="flex gap-2">
+                      <Button type="button" size="sm" variant="outline" onClick={selectAllGroupMembers}>
+                        Todo el grupo
+                      </Button>
+                      <Button type="button" size="sm" variant="outline" onClick={clearGroupMembers}>
+                        Desmarcar todos
+                      </Button>
+                    </div>
+                  </div>
+                  {loadingGroupMembers ? (
+                    <p className="text-xs text-text-soft">Cargando miembros...</p>
+                  ) : groupMembers.length === 0 ? (
+                    <p className="text-xs text-amber-700">El grupo no tiene miembros disponibles.</p>
+                  ) : (
+                    <>
+                      <Input
+                        value={memberQuery}
+                        onChange={(event) => setMemberQuery(event.target.value)}
+                        placeholder="Buscar miembro"
+                      />
+                      <ul className="max-h-48 space-y-1 overflow-y-auto">
+                        {filteredMembers.map((member) => {
+                          const checked = values.participants.some(
+                            (item) => item.userId === member.userId,
+                          )
+                          return (
+                            <li key={member.userId}>
+                              <label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-lg px-2 text-sm hover:bg-petrol-dark/5">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleGroupMember(member)}
+                                />
+                                <span className="min-w-0 flex-1 truncate">
+                                  {member.name}
+                                  {member.email ? (
+                                    <span className="text-text-soft"> · {member.email}</span>
+                                  ) : (
+                                    <span className="text-amber-700"> · sin email</span>
+                                  )}
+                                </span>
+                              </label>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    </>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
@@ -480,6 +736,7 @@ export function ScheduleMeetingModal({
             />
           </div>
 
+          {values.meetingAudience === 'individual' ? (
           <div className="rounded-xl border border-petrol-dark/10 p-3">
             <p className="text-sm font-medium text-text-dark">Participantes y contacto</p>
             <Input
@@ -501,7 +758,7 @@ export function ScheduleMeetingModal({
               ))}
             </div>
 
-            {internalMembers.length > 0 ? (
+            {individualMembers.length > 0 ? (
               <>
                 <Input
                   className="mt-3"
@@ -577,6 +834,14 @@ export function ScheduleMeetingModal({
               ))}
             </ul>
           </div>
+          ) : values.meetingMode === 'video' &&
+            values.videoLinkMethod === 'google_meet' &&
+            values.participants.some((item) => item.type === 'user' && !item.email?.trim()) ? (
+            <p className="rounded-lg border border-amber-500/30 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              Algunos miembros del grupo no tienen email. Podrán ver la reunión en EXPANSIÓN, pero no
+              se añadirán como attendees de Google Calendar.
+            </p>
+          ) : null}
 
           <div className="rounded-xl border border-petrol-dark/10 p-3 space-y-3">
             <div>
