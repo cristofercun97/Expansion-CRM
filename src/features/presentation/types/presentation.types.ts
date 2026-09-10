@@ -49,6 +49,16 @@ export type PresentationLeadMagnet = {
   resourceUrl: string
 }
 
+/** Public booking config (Presentación ↔ Agenda Fase 1). */
+export type PresentationBookingConfig = {
+  enabled: boolean
+  durationMinutes: number
+  timezone: string
+  title: string
+  description: string
+  googleMeet: boolean
+}
+
 export type PresentationMethodStep = {
   title: string
   description: string
@@ -137,6 +147,7 @@ export type PresentationFormState = {
   finalCta: PresentationFinalCta
   formConfig: PresentationFormConfig
   socialLinks: PresentationSocialLinks
+  booking: PresentationBookingConfig
 }
 
 export type PresentationFormConfigFirestore = PresentationFormPreview & {
@@ -176,6 +187,7 @@ export type PresentationFirestorePayload = {
   formConfig: PresentationFormConfigFirestore
   formPreview: PresentationFormPreview
   socialLinks: PresentationSocialLinks
+  booking: PresentationBookingConfig
 }
 
 export type PresentationUpsertInput = {

@@ -570,6 +570,69 @@ export function PresentationEditorForm({
               }
             />
           </div>
+          <div className="rounded-2xl border border-[#d7ebe8] bg-[#f3fbfa] p-4 space-y-4">
+            <label className="flex items-center gap-2 text-sm font-semibold text-[#0f3d3a]">
+              <input
+                type="checkbox"
+                checked={form.booking.enabled}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    booking: { ...current.booking, enabled: event.target.checked },
+                    leadMagnet: {
+                      ...current.leadMagnet,
+                      ctaText: event.target.checked
+                        ? current.leadMagnet.ctaText || 'Agendar mi encuentro'
+                        : current.leadMagnet.ctaText,
+                    },
+                  }))
+                }
+              />
+              Activar reserva pública (Agenda)
+            </label>
+            {form.booking.enabled ? (
+              <>
+                <PresentationTitleInput
+                  label="Título de la reserva"
+                  value={form.booking.title}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      booking: { ...current.booking, title: event.target.value },
+                    }))
+                  }
+                />
+                <PresentationDescriptionTextarea
+                  label="Descripción pública"
+                  rows={2}
+                  value={form.booking.description}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      booking: { ...current.booking, description: event.target.value },
+                    }))
+                  }
+                />
+                <label className="flex items-center gap-2 text-sm text-[#0f3d3a]">
+                  <input
+                    type="checkbox"
+                    checked={form.booking.googleMeet}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        booking: { ...current.booking, googleMeet: event.target.checked },
+                      }))
+                    }
+                  />
+                  Intentar Google Meet (si Calendar está conectado)
+                </label>
+                <p className="text-xs text-[#5b6b69]">
+                  Duración Fase 1: 30 minutos. Zona horaria: {form.booking.timezone}. El botón del
+                  recurso gratuito enlazará a /reservar/{'{slug}'}.
+                </p>
+              </>
+            ) : null}
+          </div>
         </div>
       </PresentationSectionCard>
 

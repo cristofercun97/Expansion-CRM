@@ -31,6 +31,10 @@ import {
   adminRejectReferralPayout,
   requestReferralPayout,
 } from "./referrals/payouts.js";
+import {
+  createPublicBooking,
+  getPublicBookingAvailability,
+} from "./booking/handlers.js";
 import {callableOptions} from "./utils/callableOptions.js";
 
 admin.initializeApp();
@@ -64,4 +68,6 @@ export {
   createRecurringMeeting,
   editRecurringMeetingScope,
   cancelRecurringMeetingScope,
+  getPublicBookingAvailability,
+  createPublicBooking,
 };

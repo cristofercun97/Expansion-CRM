@@ -3584,6 +3584,17 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Public booking locks / idempotency / rate limits — Admin SDK only.
+    match /bookingLocks/{lockId} {
+      allow read, write: if false;
+    }
+    match /bookingIdempotency/{id} {
+      allow read, write: if false;
+    }
+    match /bookingRateLimits/{id} {
+      allow read, write: if false;
+    }
+
     // -------------------------------------------------------------------------
     // DENEGAR TODO LO DEMÁS
     // Cualquier colección no definida explícitamente queda bloqueada.

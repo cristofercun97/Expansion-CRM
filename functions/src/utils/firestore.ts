@@ -22,4 +22,10 @@ export const COLLECTIONS = {
   actionTasks: "actionTasks",
   leadActivities: "leadActivities",
   meetingNextActionLocks: "meetingNextActionLocks",
+  leaderLandingPages: "leaderLandingPages",
+  slugs: "slugs",
+  prospects: "prospects",
+  bookingLocks: "bookingLocks",
+  bookingIdempotency: "bookingIdempotency",
+  bookingRateLimits: "bookingRateLimits",
 } as const;

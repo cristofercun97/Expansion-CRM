@@ -61,6 +61,15 @@ export const router = createBrowserRouter([
           return { Component: PublicPresentationPage }
         },
       },
+      {
+        path: 'reservar/:slug',
+        lazy: async () => {
+          const { PublicBookingPage } = await import(
+            '@/features/presentation/pages/PublicBookingPage'
+          )
+          return { Component: PublicBookingPage }
+        },
+      },
     ],
   },
   {

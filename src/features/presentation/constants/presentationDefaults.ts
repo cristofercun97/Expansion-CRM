@@ -109,6 +109,14 @@ export const defaultPresentationFormState: PresentationFormState = {
     website: '',
     whatsapp: '',
   },
+  booking: {
+    enabled: false,
+    durationMinutes: 30,
+    timezone: 'Europe/Madrid',
+    title: 'Conversemos 30 minutos sobre tu próximo paso',
+    description: '',
+    googleMeet: false,
+  },
 }
 
 /** Campos del formulario público — vista previa visual. */

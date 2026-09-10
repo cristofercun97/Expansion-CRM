@@ -223,6 +223,17 @@ export function mapDocumentToPresentationRecord(
       },
       formConfig: mapFormConfig(data),
       socialLinks: mapSocialLinks(data),
+      booking: {
+        enabled: data.booking?.enabled === true,
+        durationMinutes:
+          Number(data.booking?.durationMinutes) > 0
+            ? Number(data.booking.durationMinutes)
+            : defaults.booking.durationMinutes,
+        timezone: str(data.booking?.timezone, defaults.booking.timezone),
+        title: str(data.booking?.title, defaults.booking.title),
+        description: str(data.booking?.description, defaults.booking.description),
+        googleMeet: data.booking?.googleMeet === true,
+      },
     },
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
@@ -275,6 +286,14 @@ export function mapFormToFirestorePayload(
     },
     formPreview,
     socialLinks: form.socialLinks,
+    booking: {
+      enabled: form.booking.enabled === true,
+      durationMinutes: form.booking.durationMinutes || 30,
+      timezone: form.booking.timezone || 'Europe/Madrid',
+      title: form.booking.title,
+      description: form.booking.description,
+      googleMeet: form.booking.googleMeet === true,
+    },
   }
 }
 

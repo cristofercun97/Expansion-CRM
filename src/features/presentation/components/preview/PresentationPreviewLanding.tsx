@@ -315,20 +315,37 @@ export function PresentationPreviewLanding({ form, publicContext }: Presentation
         </PreviewSection>
       ) : null}
 
-      {hasSectionContent(form.leadMagnet.title, form.leadMagnet.description) ? (
+      {hasSectionContent(form.leadMagnet.title, form.leadMagnet.description) ||
+      form.booking.enabled ? (
         <PreviewSection>
           <PreviewHeading
             sectionKey="leadMagnet"
-            title={form.leadMagnet.title || 'Recurso gratuito'}
-            description={form.leadMagnet.description}
+            title={
+              form.booking.enabled
+                ? form.booking.title || form.leadMagnet.title || 'Agenda un encuentro'
+                : form.leadMagnet.title || 'Recurso gratuito'
+            }
+            description={
+              form.booking.enabled
+                ? form.booking.description || form.leadMagnet.description
+                : form.leadMagnet.description
+            }
           />
           <div className="flex justify-center text-center">
             <PreviewButton
-              href={form.leadMagnet.resourceUrl}
-              scrollToForm={!hasText(form.leadMagnet.resourceUrl)}
+              href={
+                form.booking.enabled && publicContext?.landingSlug
+                  ? `/reservar/${publicContext.landingSlug}`
+                  : form.leadMagnet.resourceUrl
+              }
+              scrollToForm={
+                !form.booking.enabled && !hasText(form.leadMagnet.resourceUrl)
+              }
               className="w-full max-w-sm sm:w-auto"
             >
-              {form.leadMagnet.ctaText || 'Descargar guía'}
+              {form.booking.enabled
+                ? form.leadMagnet.ctaText?.trim() || 'Agendar mi encuentro'
+                : form.leadMagnet.ctaText || 'Descargar guía'}
             </PreviewButton>
           </div>
         </PreviewSection>

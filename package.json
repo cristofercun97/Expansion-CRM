@@ -24,7 +24,8 @@
     "test:agenda-notifications": "tsx scripts/test-agenda-notifications.ts",
     "test:agenda-next-action": "tsx scripts/test-agenda-notifications.ts",
     "test:agenda-group-auth": "tsx scripts/test-agenda-group-auth.ts",
-    "test:agenda-rules": "firebase emulators:exec --only firestore --project expansion-agenda-rules-test \"tsx scripts/test-agenda-rules.ts\""
+    "test:agenda-rules": "firebase emulators:exec --only firestore --project expansion-agenda-rules-test \"tsx scripts/test-agenda-rules.ts\"",
+    "test:presentation-booking": "tsx scripts/test-presentation-booking-phase1.ts"
   },
   "dependencies": {
     "firebase": "^12.14.0",
