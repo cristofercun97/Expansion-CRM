@@ -1,17 +1,20 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import type { Meeting } from '@/features/agenda/types/meeting.types'
 import type { TeamAgendaSlot } from '@/features/agenda/services/team-agenda-functions.service'
+import {
+  AgendaTimedEventBlock,
+  type TimedEventBlockModel,
+} from '@/features/agenda/components/AgendaTimedEventBlock'
+import {
+  layoutTimedEvents,
+  useAgendaOverlapCompact,
+} from '@/features/agenda/utils/agendaTimedEventLayout'
 import {
   AGENDA_DAY_HOURS,
   AGENDA_GRID_END_HOUR,
   AGENDA_GRID_START_HOUR,
   AGENDA_HOUR_PX,
-  statusBlockClass,
 } from '@/features/agenda/utils/agendaCalendarUi'
-import {
-  layoutOverlappingEvents,
-  type OverlapLayoutItem,
-} from '@/features/agenda/utils/agendaOverlapLayout'
 import { addMinutes, isSameDay, startOfDay, timestampToDate } from '@/features/agenda/utils/meetingDateUtils'
 import { cn } from '@/lib/utils'
 
@@ -35,94 +38,11 @@ export type AgendaCalendarWeekViewProps = {
   onSelectDay: (day: Date) => void
 } & (PersonalProps | TeamProps)
 
-type RenderEvent = {
-  key: string
-  title: string
-  status: string
-  start: Date
-  layout: OverlapLayoutItem
-  onOpen: () => void
-}
-
-function useCompactWeekLayout(): boolean {
-  const [compact, setCompact] = useState(() =>
-    typeof window !== 'undefined' ? window.matchMedia('(max-width: 1023px)').matches : false,
-  )
-
-  useEffect(() => {
-    const media = window.matchMedia('(max-width: 1023px)')
-    const sync = () => setCompact(media.matches)
-    sync()
-    media.addEventListener('change', sync)
-    return () => media.removeEventListener('change', sync)
-  }, [])
-
-  return compact
-}
-
-function EventBlock({
-  event,
-  compact,
-}: {
-  event: RenderEvent
-  compact: boolean
-}) {
-  const narrow = event.layout.columnCount >= 4 || (compact && event.layout.columnCount >= 2)
-  const timeLabel = event.start.toLocaleTimeString('es-ES', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-
-  return (
-    <button
-      type="button"
-      onClick={(clickEvent) => {
-        clickEvent.stopPropagation()
-        event.onOpen()
-      }}
-      className={cn(
-        'absolute overflow-hidden rounded-md border text-left shadow-sm transition-[transform,box-shadow] hover:z-30 hover:shadow-md',
-        statusBlockClass(event.status),
-        narrow ? 'px-0.5 py-0.5' : 'px-1.5 py-1',
-      )}
-      style={{
-        top: event.layout.top,
-        height: event.layout.height,
-        left: `${event.layout.leftPct}%`,
-        width: `${event.layout.widthPct}%`,
-        zIndex: event.layout.zIndex,
-      }}
-      title={`${timeLabel} · ${event.title}`}
-      aria-label={`${timeLabel} ${event.title}`}
-    >
-      <span
-        className={cn(
-          'block truncate font-semibold leading-tight',
-          narrow ? 'text-[9px]' : 'text-[10px]',
-        )}
-      >
-        {timeLabel}
-      </span>
-      {!narrow || event.layout.widthPct >= 18 ? (
-        <span
-          className={cn(
-            'block truncate font-medium leading-tight',
-            narrow ? 'text-[9px]' : 'text-[11px]',
-          )}
-        >
-          {event.title}
-        </span>
-      ) : null}
-    </button>
-  )
-}
-
 export function AgendaCalendarWeekView(props: AgendaCalendarWeekViewProps) {
   const { weekDays, selectedDay, onSelectDay } = props
   const today = new Date()
   const gridHeight = (AGENDA_GRID_END_HOUR - AGENDA_GRID_START_HOUR) * AGENDA_HOUR_PX
-  const compact = useCompactWeekLayout()
-  const strategy = compact ? 'peek' : 'columns'
+  const compact = useAgendaOverlapCompact()
 
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
@@ -178,24 +98,18 @@ export function AgendaCalendarWeekView(props: AgendaCalendarWeekViewProps) {
               ))}
             </div>
 
-            {weekDays.map((day) => {
-              const isToday = isSameDay(day, today)
-              const isSelected = selectedDay ? isSameDay(day, selectedDay) : false
-
-              return (
-                <DayColumn
-                  key={`col-${day.toISOString()}`}
-                  day={day}
-                  isToday={isToday}
-                  isSelected={isSelected}
-                  gridHeight={gridHeight}
-                  strategy={strategy}
-                  compact={compact}
-                  onSelectDay={onSelectDay}
-                  props={props}
-                />
-              )
-            })}
+            {weekDays.map((day) => (
+              <DayColumn
+                key={`col-${day.toISOString()}`}
+                day={day}
+                isToday={isSameDay(day, today)}
+                isSelected={selectedDay ? isSameDay(day, selectedDay) : false}
+                gridHeight={gridHeight}
+                compact={compact}
+                onSelectDay={onSelectDay}
+                props={props}
+              />
+            ))}
           </div>
         </div>
       </div>
@@ -208,7 +122,6 @@ function DayColumn({
   isToday,
   isSelected,
   gridHeight,
-  strategy,
   compact,
   onSelectDay,
   props,
@@ -217,12 +130,11 @@ function DayColumn({
   isToday: boolean
   isSelected: boolean
   gridHeight: number
-  strategy: 'columns' | 'peek'
   compact: boolean
   onSelectDay: (day: Date) => void
   props: AgendaCalendarWeekViewProps
 }) {
-  const events = useMemo((): RenderEvent[] => {
+  const events = useMemo((): TimedEventBlockModel[] => {
     if (props.mode === 'personal') {
       const dayMeetings = props.meetings.filter((meeting) => {
         const start = timestampToDate(meeting.startAt)
@@ -237,7 +149,7 @@ function DayColumn({
         return [{ id: meeting.id, startMs: start.getTime(), endMs: end.getTime() }]
       })
 
-      const layouts = layoutOverlappingEvents(inputs, { strategy })
+      const layouts = layoutTimedEvents(inputs, { compact })
       const layoutById = new Map(layouts.map((item) => [item.id, item]))
 
       return dayMeetings.flatMap((meeting) => {
@@ -263,7 +175,7 @@ function DayColumn({
       startMs: new Date(slot.startAt).getTime(),
       endMs: new Date(slot.endAt).getTime(),
     }))
-    const layouts = layoutOverlappingEvents(inputs, { strategy })
+    const layouts = layoutTimedEvents(inputs, { compact })
     const layoutById = new Map(layouts.map((item) => [item.id, item]))
 
     return daySlots.flatMap((slot) => {
@@ -286,7 +198,7 @@ function DayColumn({
         },
       ]
     })
-  }, [day, onSelectDay, props, strategy])
+  }, [compact, day, onSelectDay, props])
 
   return (
     <div
@@ -315,7 +227,7 @@ function DayColumn({
       ))}
 
       {events.map((event) => (
-        <EventBlock key={event.key} event={event} compact={compact} />
+        <AgendaTimedEventBlock key={event.key} event={event} compact={compact} size="week" />
       ))}
     </div>
   )

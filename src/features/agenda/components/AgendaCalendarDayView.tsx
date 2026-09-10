@@ -1,7 +1,16 @@
+import { useMemo } from 'react'
 import { CalendarDays } from 'lucide-react'
 import { EmptyState } from '@/components/ui'
 import { MeetingCard } from '@/features/agenda/components/MeetingCard'
 import { TeamBusySlotCard } from '@/features/agenda/components/TeamBusySlotCard'
+import {
+  AgendaTimedEventBlock,
+  type TimedEventBlockModel,
+} from '@/features/agenda/components/AgendaTimedEventBlock'
+import {
+  layoutTimedEvents,
+  useAgendaOverlapCompact,
+} from '@/features/agenda/utils/agendaTimedEventLayout'
 import type { Meeting } from '@/features/agenda/types/meeting.types'
 import type { TeamAgendaSlot } from '@/features/agenda/services/team-agenda-functions.service'
 import {
@@ -9,12 +18,9 @@ import {
   AGENDA_GRID_END_HOUR,
   AGENDA_GRID_START_HOUR,
   AGENDA_HOUR_PX,
-  blockStyleForRange,
   formatDayHeading,
-  statusBlockClass,
 } from '@/features/agenda/utils/agendaCalendarUi'
 import { addMinutes, timestampToDate } from '@/features/agenda/utils/meetingDateUtils'
-import { cn } from '@/lib/utils'
 
 type PersonalProps = {
   mode: 'personal'
@@ -38,7 +44,64 @@ export type AgendaCalendarDayViewProps = {
 export function AgendaCalendarDayView(props: AgendaCalendarDayViewProps) {
   const { day } = props
   const gridHeight = (AGENDA_GRID_END_HOUR - AGENDA_GRID_START_HOUR) * AGENDA_HOUR_PX
+  const compact = useAgendaOverlapCompact()
   const count = props.mode === 'personal' ? props.meetings.length : props.slots.length
+
+  const timedEvents = useMemo((): TimedEventBlockModel[] => {
+    if (props.mode === 'personal') {
+      const inputs = props.meetings.flatMap((meeting) => {
+        const start = timestampToDate(meeting.startAt)
+        if (!start) return []
+        const end =
+          timestampToDate(meeting.endAt) || addMinutes(start, meeting.durationMinutes || 30)
+        return [{ id: meeting.id, startMs: start.getTime(), endMs: end.getTime() }]
+      })
+      const layouts = layoutTimedEvents(inputs, { compact })
+      const byId = new Map(layouts.map((item) => [item.id, item]))
+      return props.meetings.flatMap((meeting) => {
+        const start = timestampToDate(meeting.startAt)
+        const layout = byId.get(meeting.id)
+        if (!start || !layout) return []
+        return [
+          {
+            key: meeting.id,
+            title: meeting.title,
+            status: meeting.status,
+            start,
+            layout,
+            onOpen: () => props.onOpenMeeting(meeting),
+          },
+        ]
+      })
+    }
+
+    const inputs = props.slots.map((slot) => ({
+      id: `${slot.meetingId}-${slot.memberUid}`,
+      startMs: new Date(slot.startAt).getTime(),
+      endMs: new Date(slot.endAt).getTime(),
+    }))
+    const layouts = layoutTimedEvents(inputs, { compact })
+    const byId = new Map(layouts.map((item) => [item.id, item]))
+    return props.slots.flatMap((slot) => {
+      const key = `${slot.meetingId}-${slot.memberUid}`
+      const layout = byId.get(key)
+      if (!layout) return []
+      const accessible = props.resolveAccessibleMeeting(slot)
+      const label = props.memberNameByUid.get(slot.memberUid) || 'Miembro'
+      return [
+        {
+          key,
+          title: accessible?.title || label,
+          status: slot.status,
+          start: new Date(slot.startAt),
+          layout,
+          onOpen: () => {
+            if (accessible) props.onOpenMeeting(accessible)
+          },
+        },
+      ]
+    })
+  }, [compact, props])
 
   if (count === 0) {
     return (
@@ -79,75 +142,23 @@ export function AgendaCalendarDayView(props: AgendaCalendarDayViewProps) {
             ))}
           </div>
 
-          <div className="relative" style={{ height: gridHeight }}>
+          <div className="relative overflow-hidden" style={{ height: gridHeight }}>
             {AGENDA_DAY_HOURS.map((hour) => (
               <div
                 key={hour}
-                className="absolute inset-x-0 border-t border-white/[0.06]"
+                className="pointer-events-none absolute inset-x-0 border-t border-white/[0.06]"
                 style={{ top: (hour - AGENDA_GRID_START_HOUR) * AGENDA_HOUR_PX }}
               />
             ))}
 
-            {props.mode === 'personal'
-              ? props.meetings.map((meeting) => {
-                  const start = timestampToDate(meeting.startAt)
-                  if (!start) return null
-                  const end =
-                    timestampToDate(meeting.endAt) ||
-                    addMinutes(start, meeting.durationMinutes || 30)
-                  const style = blockStyleForRange(start, end)
-                  return (
-                    <button
-                      key={meeting.id}
-                      type="button"
-                      onClick={() => props.onOpenMeeting(meeting)}
-                      className={cn(
-                        'absolute left-2 right-2 overflow-hidden rounded-xl border px-3 py-2 text-left shadow-sm',
-                        statusBlockClass(meeting.status),
-                      )}
-                      style={{ top: style.top, height: Math.max(style.height, 44) }}
-                    >
-                      <span className="text-xs font-semibold text-hero-text/80">
-                        {start.toLocaleTimeString('es-ES', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </span>
-                      <span className="mt-0.5 block truncate text-sm font-semibold">
-                        {meeting.title}
-                      </span>
-                    </button>
-                  )
-                })
-              : props.slots.map((slot) => {
-                  const start = new Date(slot.startAt)
-                  const end = new Date(slot.endAt)
-                  const style = blockStyleForRange(start, end)
-                  const accessible = props.resolveAccessibleMeeting(slot)
-                  const label = props.memberNameByUid.get(slot.memberUid) || 'Miembro'
-                  return (
-                    <button
-                      key={`${slot.meetingId}-${slot.memberUid}`}
-                      type="button"
-                      onClick={() => {
-                        if (accessible) props.onOpenMeeting(accessible)
-                      }}
-                      className={cn(
-                        'absolute left-2 right-2 overflow-hidden rounded-xl border px-3 py-2 text-left shadow-sm',
-                        statusBlockClass(slot.status),
-                      )}
-                      style={{ top: style.top, height: Math.max(style.height, 44) }}
-                    >
-                      <span className="text-xs font-semibold text-hero-text/80">
-                        {start.toLocaleTimeString('es-ES', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </span>
-                      <span className="mt-0.5 block truncate text-sm font-semibold">{label}</span>
-                    </button>
-                  )
-                })}
+            {timedEvents.map((event) => (
+              <AgendaTimedEventBlock
+                key={event.key}
+                event={event}
+                compact={compact}
+                size="day"
+              />
+            ))}
           </div>
         </div>
       </div>

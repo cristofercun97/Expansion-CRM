@@ -22,6 +22,10 @@ export type OverlapLayoutItem = {
   leftPct: number
   /** Percentage of day-column width (0–100). */
   widthPct: number
+  /** Alias of leftPct for callers expecting `left`. */
+  left: number
+  /** Alias of widthPct for callers expecting `width`. */
+  width: number
   zIndex: number
 }
 
@@ -163,6 +167,7 @@ function geometryForItem(options: {
   const index = Math.min(Math.max(0, columnIndex), count - 1)
 
   if (strategy === 'peek') {
+    // Legacy peek kept for tests; prefer columns — peek intentionally stacks.
     const step = Math.min(10, 28 / count)
     const leftPct = edgeInsetPct + index * step
     const widthPct = Math.max(36, 100 - leftPct - edgeInsetPct)
@@ -173,15 +178,17 @@ function geometryForItem(options: {
     }
   }
 
-  const usable = 100 - edgeInsetPct * 2
+  // Non-overlapping horizontal columns (canonical Day + Week layout).
+  const usable = Math.max(0, 100 - edgeInsetPct * 2)
   const slot = usable / count
-  const innerGutter = count > 1 ? gutterPct : 0
-  const widthPct = Math.max(8, slot - innerGutter)
-  const leftPct = edgeInsetPct + index * slot + innerGutter / 2
+  const gutter = count > 1 ? Math.min(gutterPct, slot * 0.35) : 0
+  const widthPct = Math.max(6, slot - gutter)
+  const leftPct = edgeInsetPct + index * slot + gutter / 2
+  const maxWidth = Math.max(6, 100 - leftPct - edgeInsetPct)
 
   return {
     leftPct,
-    widthPct: Math.min(widthPct, 100 - leftPct - edgeInsetPct / 2),
+    widthPct: Math.min(widthPct, maxWidth),
     zIndex: 10 + index,
   }
 }
@@ -236,6 +243,8 @@ export function layoutOverlappingEvents(
         height,
         leftPct: geo.leftPct,
         widthPct: geo.widthPct,
+        left: geo.leftPct,
+        width: geo.widthPct,
         zIndex: geo.zIndex,
       })
     }
