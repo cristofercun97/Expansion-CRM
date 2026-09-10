@@ -10,6 +10,7 @@ import { AgendaDayDetailsPanel } from '@/features/agenda/components/AgendaDayDet
 import { AgendaFiltersPanel } from '@/features/agenda/components/AgendaFiltersPanel'
 import { AgendaMetricsPanel } from '@/features/agenda/components/AgendaMetricsPanel'
 import { AgendaMobileFiltersDrawer } from '@/features/agenda/components/AgendaMobileFiltersDrawer'
+import { AgendaNewBookingsAlert } from '@/features/agenda/components/AgendaNewBookingsAlert'
 import { AgendaToolbar } from '@/features/agenda/components/AgendaToolbar'
 import { CreateMeetingNextActionModal } from '@/features/agenda/components/CreateMeetingNextActionModal'
 import { GoogleCalendarStatusCard } from '@/features/agenda/components/GoogleCalendarStatusCard'
@@ -562,6 +563,8 @@ export function AgendaPage() {
           Organiza, acompaña y haz crecer cada relación.
         </p>
       </header>
+
+      <AgendaNewBookingsAlert />
 
       <GoogleCalendarStatusCard onStatusChange={handleGoogleStatusChange} />
 

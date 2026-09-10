@@ -29,4 +29,5 @@ export const COLLECTIONS = {
   bookingIdempotency: "bookingIdempotency",
   bookingRateLimits: "bookingRateLimits",
   presentationFunnelEvents: "presentationFunnelEvents",
+  bookingEmailDeliveries: "bookingEmailDeliveries",
 } as const;

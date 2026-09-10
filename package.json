@@ -30,7 +30,10 @@
     "test:presentation-booking-ui": "tsx scripts/test-presentation-booking-ui.ts",
     "test:presentation-booking-meta": "tsx scripts/test-presentation-booking-meta.ts",
     "test:presentation-booking-rate": "tsx scripts/test-presentation-booking-rate.ts",
-    "test:presentation-booking-profile": "tsx scripts/test-presentation-booking-profile.ts"
+    "test:presentation-booking-profile": "tsx scripts/test-presentation-booking-profile.ts",
+    "test:agenda-booking-notifications": "tsx scripts/test-agenda-booking-notifications.ts",
+    "test:agenda-booking-alert": "tsx scripts/test-agenda-booking-alert.ts",
+    "test:booking-confirmation-email": "tsx scripts/test-booking-confirmation-email.ts"
   },
   "dependencies": {
     "firebase": "^12.14.0",

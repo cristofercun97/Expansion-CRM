@@ -89,6 +89,11 @@ async function createNotificationOnce(options: {
   title: string;
   message: string;
   meetingId: string;
+  contactId: string;
+  leadName: string;
+  dateLabel: string;
+  timeLabel: string;
+  durationMinutes: number;
   actionUrl: string;
   actionLabel: string;
 }): Promise<"created" | "exists"> {
@@ -100,6 +105,12 @@ async function createNotificationOnce(options: {
       title: options.title,
       message: options.message,
       meetingId: options.meetingId,
+      contactId: options.contactId,
+      leadName: options.leadName,
+      dateLabel: options.dateLabel,
+      timeLabel: options.timeLabel,
+      durationMinutes: options.durationMinutes,
+      source: "presentation_booking",
       actionUrl: options.actionUrl,
       actionLabel: options.actionLabel,
       read: false,
@@ -148,11 +159,16 @@ export async function ensurePublicBookingConversionEffects(input: {
       input.ownerUid,
     ]),
     recipientUid: input.ownerUid,
-    title: "Nueva reserva desde tu presentación",
+    title: "Nueva reserva",
     message: `${leadName} · ${input.dateLabel} · ${input.timeLabel}`,
     meetingId: bookingId,
+    contactId: input.contactId,
+    leadName,
+    dateLabel: input.dateLabel,
+    timeLabel: input.timeLabel,
+    durationMinutes: input.durationMinutes,
     actionUrl: agendaActionUrl(bookingId),
-    actionLabel: "Ver reunión",
+    actionLabel: "Ver cita",
   });
 
   const bookingActivityRef = db

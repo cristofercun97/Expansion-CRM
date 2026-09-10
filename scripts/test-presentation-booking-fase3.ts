@@ -35,7 +35,7 @@ function read(rel: string) {
   const handlers = read('functions/src/booking/handlers.ts')
   const conversion = read('functions/src/booking/conversion.ts')
   assert.match(conversion, /public_booking_created/)
-  assert.match(conversion, /Nueva reserva desde tu presentación/)
+  assert.match(conversion, /Nueva reserva/)
   assert.match(handlers, /ensurePublicBookingConversionEffects/)
   pass('CONV-01')
 }

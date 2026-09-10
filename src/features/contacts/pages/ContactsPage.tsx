@@ -1,5 +1,6 @@
 import { Loader2, UserPlus, Users } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Button, EmptyState, PageHeader } from '@/components/ui'
 import { ContactDetailModal } from '@/features/contacts/components/ContactDetailModal'
 import { ContactsFilters } from '@/features/contacts/components/ContactsFilters'
@@ -29,6 +30,7 @@ function logContactsDevError(message: string, error: unknown): void {
 
 export function ContactsPage() {
   const { currentUser, initialized, loading: authLoading } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [contacts, setContacts] = useState<Contact[]>([])
   const [filters, setFilters] = useState<ContactFiltersState>(DEFAULT_CONTACT_FILTERS)
   const [loading, setLoading] = useState(true)
@@ -39,13 +41,41 @@ export function ContactsPage() {
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [isCreatingContact, setIsCreatingContact] = useState(false)
+  const [consumedContactDeepLink, setConsumedContactDeepLink] = useState('')
 
   const uid = currentUser?.uid
+  const contactDeepLinkId = searchParams.get('contactId')?.trim() || ''
 
   const filteredContacts = useMemo(
     () => filterContacts(contacts, filters),
     [contacts, filters],
   )
+
+  if (
+    contactDeepLinkId &&
+    contactDeepLinkId !== consumedContactDeepLink &&
+    !loading &&
+    contacts.length > 0
+  ) {
+    const found = contacts.find((contact) => contact.id === contactDeepLinkId)
+    setConsumedContactDeepLink(contactDeepLinkId)
+    if (found) {
+      setSelectedContact(found)
+    }
+  }
+
+  useEffect(() => {
+    if (!contactDeepLinkId || contactDeepLinkId !== consumedContactDeepLink) return
+    if (!searchParams.has('contactId')) return
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        next.delete('contactId')
+        return next
+      },
+      { replace: true },
+    )
+  }, [contactDeepLinkId, consumedContactDeepLink, searchParams, setSearchParams])
 
   const loadContacts = useCallback(async (ownerUid: string) => {
     setLoading(true)
@@ -73,11 +103,13 @@ export function ContactsPage() {
     }
 
     if (!uid) {
-      setLoading(false)
+      queueMicrotask(() => setLoading(false))
       return
     }
 
-    void loadContacts(uid)
+    queueMicrotask(() => {
+      void loadContacts(uid)
+    })
   }, [authLoading, initialized, loadContacts, uid])
 
   const handleStatusChange = useCallback(async (contactId: string, status: ContactStatus) => {

@@ -15,6 +15,12 @@ export type AppNotification = {
   title: string
   message: string
   meetingId: string | null
+  contactId: string | null
+  leadName: string | null
+  dateLabel: string | null
+  timeLabel: string | null
+  durationMinutes: number | null
+  source: string | null
   actionUrl: string
   actionLabel: string
   read: boolean

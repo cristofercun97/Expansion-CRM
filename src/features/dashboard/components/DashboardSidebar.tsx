@@ -15,6 +15,7 @@ import {
   isDashboardNavItemLocked,
   resolveDashboardNavItems,
 } from '@/features/dashboard/utils/dashboardNav.utils'
+import { useOptionalNotificationsContext } from '@/features/notifications/hooks/useNotificationsContext'
 import { cn } from '@/lib/utils'
 
 type DashboardSidebarProps = {
@@ -30,9 +31,19 @@ type DashboardSidebarProps = {
 type SidebarLinkProps = DashboardNavItem & {
   collapsed: boolean
   locked?: boolean
+  badge?: string
 }
 
-function SidebarLink({ label, to, icon: Icon, end, placeholder, collapsed, locked }: SidebarLinkProps) {
+function SidebarLink({
+  label,
+  to,
+  icon: Icon,
+  end,
+  placeholder,
+  collapsed,
+  locked,
+  badge,
+}: SidebarLinkProps) {
   const tooltip = locked ? `${label} — Requiere Activación de grupo` : placeholder ? 'Próximamente' : label
 
   if (placeholder) {
@@ -75,11 +86,34 @@ function SidebarLink({ label, to, icon: Icon, end, placeholder, collapsed, locke
       {!collapsed ? (
         <>
           <span className="truncate">{label}</span>
-          {locked ? <Lock className="ml-auto h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden="true" /> : null}
+          {badge ? (
+            <span
+              className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-gold px-1.5 text-[10px] font-semibold text-petrol-deep"
+              data-testid="agenda-booking-badge"
+              aria-label={`${badge} nuevas reservas`}
+            >
+              {badge}
+            </span>
+          ) : locked ? (
+            <Lock className="ml-auto h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden="true" />
+          ) : null}
         </>
-      ) : locked ? (
-        <Lock className="absolute right-1 top-1 h-2.5 w-2.5 text-gold-light/80" aria-hidden="true" />
-      ) : null}
+      ) : (
+        <>
+          {badge ? (
+            <span
+              className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-gold px-0.5 text-[9px] font-semibold text-petrol-deep"
+              data-testid="agenda-booking-badge"
+              aria-label={`${badge} nuevas reservas`}
+            >
+              {badge}
+            </span>
+          ) : null}
+          {locked && !badge ? (
+            <Lock className="absolute right-1 top-1 h-2.5 w-2.5 text-gold-light/80" aria-hidden="true" />
+          ) : null}
+        </>
+      )}
     </NavLink>
   )
 }
@@ -136,9 +170,11 @@ export function DashboardSidebar({
   const { appUser } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
+  const notifications = useOptionalNotificationsContext()
   const navItems = resolveDashboardNavItems(location.pathname, appUser, 'sidebar')
   const showEmail = user.email.length > 0 && user.displayName !== user.email
   const profileTitle = showEmail ? `${user.displayName} — ${user.email}` : user.displayName
+  const agendaBadge = notifications?.agendaBookingBadge || ''
 
   return (
     <aside
@@ -198,6 +234,7 @@ export function DashboardSidebar({
             {...item}
             collapsed={collapsed}
             locked={isDashboardNavItemLocked(item, location.pathname, appUser)}
+            badge={item.to === '/dashboard/agenda' ? agendaBadge || undefined : undefined}
           />
         ))}
       </nav>

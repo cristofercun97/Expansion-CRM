@@ -3561,6 +3561,14 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------------------
+    // bookingEmailDeliveries/{bookingId}
+    // Backend-only email delivery outbox. Cliente: denegado.
+    // -------------------------------------------------------------------------
+    match /bookingEmailDeliveries/{bookingId} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
     // meetingNextActionLocks/{lockId}
     // Idempotencia de próxima acción. Solo Admin SDK.
     // -------------------------------------------------------------------------
