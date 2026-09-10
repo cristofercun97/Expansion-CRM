@@ -102,9 +102,10 @@ const baseConfig = mapBookingConfig({
 // BOOK-08 — source / timeline
 {
   const handlers = fs.readFileSync(path.join(root, 'functions/src/booking/handlers.ts'), 'utf8')
+  const conversion = fs.readFileSync(path.join(root, 'functions/src/booking/conversion.ts'), 'utf8')
   assert.ok(handlers.includes('source: "presentation_booking"'))
-  assert.ok(handlers.includes('eventKind: "meeting_scheduled"'))
-  assert.ok(handlers.includes('leadActivities'))
+  assert.ok(conversion.includes('eventKind: "meeting_scheduled"'))
+  assert.ok(conversion.includes('leadActivities') || handlers.includes('ensurePublicBookingConversionEffects'))
   pass('BOOK-08')
 }
 
@@ -205,7 +206,12 @@ const baseConfig = mapBookingConfig({
     'utf8',
   )
   assert.ok(landing.includes('Agendar mi encuentro'))
-  assert.ok(landing.includes('/reservar/'))
+  assert.ok(landing.includes('resolvePresentationBookingCta'))
+  const ctaUtil = fs.readFileSync(
+    path.join(root, 'src/features/presentation/utils/bookingFunnelMetrics.ts'),
+    'utf8',
+  )
+  assert.ok(ctaUtil.includes('/reservar/'))
   const rules = fs.readFileSync(path.join(root, 'firestore.rules'), 'utf8')
   assert.ok(rules.includes('match /bookingLocks/{lockId}'))
   assert.ok(rules.includes('allow read, write: if false'))

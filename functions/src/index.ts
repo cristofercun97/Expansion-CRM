@@ -34,6 +34,7 @@ import {
 import {
   createPublicBooking,
   getPublicBookingAvailability,
+  trackPresentationFunnelEvent,
 } from "./booking/handlers.js";
 import {callableOptions} from "./utils/callableOptions.js";
 
@@ -70,4 +71,5 @@ export {
   cancelRecurringMeetingScope,
   getPublicBookingAvailability,
   createPublicBooking,
+  trackPresentationFunnelEvent,
 };

@@ -219,6 +219,7 @@ type PreviewButtonProps = {
   className?: string
   href?: string
   scrollToForm?: boolean
+  onClick?: () => void
 }
 
 export function PreviewButton({
@@ -227,6 +228,7 @@ export function PreviewButton({
   className,
   href,
   scrollToForm = false,
+  onClick,
 }: PreviewButtonProps) {
   const styles = cn(
     'inline-flex min-h-12 items-center justify-center rounded-xl px-6 py-3 text-base font-semibold transition-opacity hover:opacity-90',
@@ -246,6 +248,7 @@ export function PreviewButton({
         target={external ? '_blank' : undefined}
         rel={external ? 'noopener noreferrer' : undefined}
         className={styles}
+        onClick={onClick}
       >
         {children}
       </a>
@@ -254,7 +257,14 @@ export function PreviewButton({
 
   if (scrollToForm) {
     return (
-      <a href="#formulario" onClick={scrollToFormulario} className={styles}>
+      <a
+        href="#formulario"
+        onClick={(event) => {
+          onClick?.()
+          scrollToFormulario(event)
+        }}
+        className={styles}
+      >
         {children}
       </a>
     )

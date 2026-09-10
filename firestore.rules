@@ -3595,6 +3595,11 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Presentation funnel analytics — Admin SDK / callables only (no PII).
+    match /presentationFunnelEvents/{eventId} {
+      allow read, write: if false;
+    }
+
     // -------------------------------------------------------------------------
     // DENEGAR TODO LO DEMÁS
     // Cualquier colección no definida explícitamente queda bloqueada.

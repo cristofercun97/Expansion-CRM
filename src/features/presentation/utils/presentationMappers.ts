@@ -1,5 +1,6 @@
 import type { DocumentData } from 'firebase/firestore'
 import { defaultPresentationFormState } from '@/features/presentation/constants/presentationDefaults'
+import { mapBookingFunnelMetrics } from '@/features/presentation/utils/bookingFunnelMetrics'
 import type {
   PresentationContentItem,
   PresentationContentType,
@@ -235,6 +236,7 @@ export function mapDocumentToPresentationRecord(
         googleMeet: data.booking?.googleMeet === true,
       },
     },
+    bookingFunnel: mapBookingFunnelMetrics(data.bookingFunnel),
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
   }

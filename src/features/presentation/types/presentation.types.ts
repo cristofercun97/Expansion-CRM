@@ -163,6 +163,12 @@ export type PresentationRecord = {
   slug: string
   isPublished: boolean
   form: PresentationFormState
+  /** Owner-only funnel counters (server-maintained). */
+  bookingFunnel?: {
+    views: number
+    bookingClicks: number
+    bookings: number
+  }
   createdAt?: Timestamp
   updatedAt?: Timestamp
 }

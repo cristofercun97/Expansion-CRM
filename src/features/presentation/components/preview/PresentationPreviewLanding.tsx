@@ -1,4 +1,5 @@
 import { ExternalLink, Quote, User } from 'lucide-react'
+import { useEffect } from 'react'
 import {
   defaultInterestOptionsText,
   getPresentationFormPreviewField,
@@ -26,7 +27,9 @@ import {
   getYoutubeEmbedUrl,
   isImageUrl,
 } from '@/features/presentation/components/preview/videoEmbedUtils'
+import { presentationFunnelService } from '@/features/presentation/services/presentationFunnel.service'
 import type { PresentationFormState } from '@/features/presentation/types/presentation.types'
+import { resolvePresentationBookingCta } from '@/features/presentation/utils/bookingFunnelMetrics'
 import { COUNTRY_OPTIONS } from '@/features/settings/constants/countries'
 import { cn } from '@/lib/utils'
 
@@ -256,6 +259,22 @@ export function PresentationPreviewLanding({ form, publicContext }: Presentation
   const heroSubtitle =
     form.mainMessage.subtitle.trim() || 'Completa tu presentación para personalizar este mensaje.'
 
+  const bookingCta = resolvePresentationBookingCta({
+    bookingEnabled: form.booking.enabled,
+    landingSlug: publicContext?.landingSlug,
+    resourceUrl: form.leadMagnet.resourceUrl,
+  })
+
+  useEffect(() => {
+    if (!publicContext?.landingSlug) return
+    void presentationFunnelService.trackPresentationFunnelEvent({
+      eventKind: 'presentation_view',
+      presentationSlug: publicContext.landingSlug,
+      source: 'presentation_public',
+      oncePerSession: true,
+    })
+  }, [publicContext?.landingSlug])
+
   return (
     <div style={previewThemeStyle(theme)} className="min-h-screen overflow-x-hidden">
       <PresentationPreviewHeader form={form} />
@@ -332,21 +351,26 @@ export function PresentationPreviewLanding({ form, publicContext }: Presentation
             }
           />
           <div className="flex justify-center text-center">
-            <PreviewButton
-              href={
-                form.booking.enabled && publicContext?.landingSlug
-                  ? `/reservar/${publicContext.landingSlug}`
-                  : form.leadMagnet.resourceUrl
-              }
-              scrollToForm={
-                !form.booking.enabled && !hasText(form.leadMagnet.resourceUrl)
-              }
-              className="w-full max-w-sm sm:w-auto"
-            >
-              {form.booking.enabled
-                ? form.leadMagnet.ctaText?.trim() || 'Agendar mi encuentro'
-                : form.leadMagnet.ctaText || 'Descargar guía'}
-            </PreviewButton>
+            {!bookingCta.hideCta ? (
+              <PreviewButton
+                href={bookingCta.href}
+                scrollToForm={bookingCta.scrollToForm}
+                className="w-full max-w-sm sm:w-auto"
+                onClick={() => {
+                  if (bookingCta.mode !== 'booking' || !publicContext?.landingSlug) return
+                  void presentationFunnelService.trackPresentationFunnelEvent({
+                    eventKind: 'presentation_booking_click',
+                    presentationSlug: publicContext.landingSlug,
+                    source: 'presentation_public',
+                    oncePerSession: true,
+                  })
+                }}
+              >
+                {form.booking.enabled
+                  ? form.leadMagnet.ctaText?.trim() || 'Agendar mi encuentro'
+                  : form.leadMagnet.ctaText || 'Descargar guía'}
+              </PreviewButton>
+            ) : null}
           </div>
         </PreviewSection>
       ) : null}

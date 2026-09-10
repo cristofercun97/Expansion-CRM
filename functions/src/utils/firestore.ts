@@ -28,4 +28,5 @@ export const COLLECTIONS = {
   bookingLocks: "bookingLocks",
   bookingIdempotency: "bookingIdempotency",
   bookingRateLimits: "bookingRateLimits",
+  presentationFunnelEvents: "presentationFunnelEvents",
 } as const;

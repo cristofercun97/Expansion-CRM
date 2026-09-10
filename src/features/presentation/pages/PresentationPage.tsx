@@ -29,6 +29,11 @@ export function PresentationPage() {
   const [form, setForm] = useState<PresentationFormState>(defaultPresentationFormState)
   const [slug, setSlug] = useState('')
   const [isPublished, setIsPublished] = useState(false)
+  const [bookingFunnel, setBookingFunnel] = useState({
+    views: 0,
+    bookingClicks: 0,
+    bookings: 0,
+  })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [publishing, setPublishing] = useState(false)
@@ -48,10 +53,14 @@ export function PresentationPage() {
         setForm(mapRecordToForm(record))
         setSlug(record.slug)
         setIsPublished(record.isPublished)
+        setBookingFunnel(
+          record.bookingFunnel || { views: 0, bookingClicks: 0, bookings: 0 },
+        )
       } else {
         setForm(defaultPresentationFormState)
         setSlug('')
         setIsPublished(false)
+        setBookingFunnel({ views: 0, bookingClicks: 0, bookings: 0 })
       }
     } catch (loadError) {
       logPresentationDevError('[Presentación] Error al cargar leaderLandingPages/{uid}', loadError)
@@ -72,7 +81,7 @@ export function PresentationPage() {
     }
 
     if (!uid) {
-      setLoading(false)
+      queueMicrotask(() => setLoading(false))
       return
     }
 
@@ -238,6 +247,7 @@ export function PresentationPage() {
           publishing={publishing}
           isPublished={isPublished}
           slug={slug}
+          bookingFunnel={bookingFunnel}
           onSlugChange={handleSlugChange}
           onPublish={handlePublish}
           onUnpublish={handleUnpublish}

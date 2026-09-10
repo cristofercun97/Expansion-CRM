@@ -28,6 +28,8 @@ function activityTitle(activity: LeadActivity): string {
   switch (activity.eventKind) {
     case 'meeting_scheduled':
       return 'Reunión agendada'
+    case 'booking_created':
+      return 'Reserva pública confirmada'
     case 'meeting_rescheduled':
       return 'Reunión reprogramada'
     case 'meeting_completed':

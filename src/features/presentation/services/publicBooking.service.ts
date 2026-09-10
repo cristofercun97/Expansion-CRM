@@ -61,6 +61,12 @@ function mapCallableError(error: unknown): Error {
   if (code.includes('not-found')) {
     return new Error('not-found')
   }
+  if (
+    message.toLowerCase().includes('no están disponibles') ||
+    message.toLowerCase().includes('booking_disabled')
+  ) {
+    return new Error('booking_disabled')
+  }
   if (message.includes('acaba de reservarse') || code.includes('failed-precondition')) {
     if (message.toLowerCase().includes('privacidad')) {
       return new Error('privacy_required')
@@ -68,8 +74,14 @@ function mapCallableError(error: unknown): Error {
     if (message.toLowerCase().includes('31')) {
       return new Error('range_too_large')
     }
-    if (message.includes('acaba de reservarse') || message.includes('no está disponible')) {
+    if (
+      message.includes('acaba de reservarse') ||
+      message.includes('ya no está disponible')
+    ) {
       return new Error('slot_taken')
+    }
+    if (message.toLowerCase().includes('no están disponibles')) {
+      return new Error('booking_disabled')
     }
   }
   if (message.toLowerCase().includes('31')) {

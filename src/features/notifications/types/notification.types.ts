@@ -6,6 +6,7 @@ export type AppNotificationType =
   | 'meeting_rescheduled'
   | 'meeting_cancelled'
   | 'meeting_result_pending'
+  | 'public_booking_created'
 
 export type AppNotification = {
   id: string

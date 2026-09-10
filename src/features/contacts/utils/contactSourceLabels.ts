@@ -1,5 +1,6 @@
 const SOURCE_LABELS: Record<string, string> = {
   presentation_landing: 'Landing de presentación',
+  presentation_booking: 'Reserva desde presentación',
   manual_contact: 'Contacto manual',
 }
 

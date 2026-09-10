@@ -23,6 +23,12 @@ import {
   sanitizeAvailabilityRequest,
   sanitizeCreateBookingRequest,
 } from "./sanitize.js";
+import {
+  ensurePublicBookingConversionEffects,
+  recordPresentationFunnelEvent,
+  assertNoPiiInFunnelPayload,
+  type PresentationFunnelEventKind,
+} from "./conversion.js";
 import {buildPublicBookingProfessional, type PublicBookingProfessional} from "./professionalMeta.js";
 
 const googleOAuthClientId = defineSecret("GOOGLE_OAUTH_CLIENT_ID");
@@ -76,7 +82,11 @@ async function resolvePublishedPresentation(slug: string): Promise<{
 
   const booking = mapBookingConfig(landing.booking);
   if (!booking.enabled) {
-    throw new HttpsError("failed-precondition", "Las reservas no están habilitadas.");
+    throw new HttpsError(
+      "failed-precondition",
+      "Las reservas no están disponibles en este momento.",
+      {reason: "booking_disabled"},
+    );
   }
 
   const professional = buildPublicBookingProfessional(landing as Record<string, unknown>);
@@ -181,6 +191,7 @@ async function findOrCreateProspect(input: {
       const current = existing.docs[0].data();
       const patch: Record<string, unknown> = {
         updatedAt: FieldValue.serverTimestamp(),
+        lastInteractionAt: FieldValue.serverTimestamp(),
         source: current.source || "presentation_booking",
         presentationSlug: input.slug,
       };
@@ -206,6 +217,7 @@ async function findOrCreateProspect(input: {
       await matched.ref.set(
         {
           updatedAt: FieldValue.serverTimestamp(),
+          lastInteractionAt: FieldValue.serverTimestamp(),
           presentationSlug: input.slug,
         },
         {merge: true},
@@ -234,6 +246,8 @@ async function findOrCreateProspect(input: {
     privacyAccepted: true,
     privacyAcceptedAt: FieldValue.serverTimestamp(),
     privacyVersion: BOOKING_PRIVACY_VERSION,
+    lastInteractionAt: FieldValue.serverTimestamp(),
+    bookingCount: 0,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
@@ -325,8 +339,22 @@ export const createPublicBooking = onCall(
       const existingIdem = await idempotencyRef.get();
       if (existingIdem.exists) {
         const prior = existingIdem.data() || {};
+        const priorBookingId = String(prior.bookingId || "");
+        const priorContactId = String(prior.contactId || "");
+        if (priorBookingId && priorContactId) {
+          await ensurePublicBookingConversionEffects({
+            bookingId: priorBookingId,
+            ownerUid,
+            contactId: priorContactId,
+            presentationSlug: input.slug,
+            leadName: String(prior.leadName || ""),
+            dateLabel: String(prior.date || input.selectedDate),
+            timeLabel: String(prior.time || input.selectedTime),
+            durationMinutes: booking.durationMinutes,
+          });
+        }
         return {
-          bookingId: String(prior.bookingId || ""),
+          bookingId: priorBookingId,
           professionalName: brandName,
           date: input.selectedDate,
           time: input.selectedTime,
@@ -451,22 +479,24 @@ export const createPublicBooking = onCall(
           clientRequestId: input.clientRequestId,
           bookingId,
           contactId,
+          leadName: fullName,
+          date: input.selectedDate,
+          time: input.selectedTime,
+          presentationSlug: input.slug,
           createdAt: FieldValue.serverTimestamp(),
           googleMeetAvailable: false,
         });
       });
 
-      const activityRef = db.collection(COLLECTIONS.leadActivities).doc();
-      await activityRef.set({
-        prospectId: contactId,
-        leaderId: ownerUid,
-        type: "meeting",
-        description: `Reserva pública creada (${input.selectedDate} ${input.selectedTime})`,
-        createdAt: FieldValue.serverTimestamp(),
-        createdBy: ownerUid,
-        eventKind: "meeting_scheduled",
-        meetingId: bookingId,
-        source: "presentation_booking",
+      await ensurePublicBookingConversionEffects({
+        bookingId,
+        ownerUid,
+        contactId,
+        presentationSlug: input.slug,
+        leadName: fullName,
+        dateLabel: input.selectedDate,
+        timeLabel: input.selectedTime,
+        durationMinutes: booking.durationMinutes,
       });
 
       let googleMeetAvailable = false;
@@ -523,3 +553,62 @@ export const createPublicBooking = onCall(
     }
   },
 );
+
+const FUNNEL_EVENT_KINDS = new Set<PresentationFunnelEventKind>([
+  "presentation_view",
+  "presentation_booking_click",
+  "booking_started",
+]);
+
+export const trackPresentationFunnelEvent = onCall(callableOptions, async (request) => {
+  try {
+    await assertRateLimit(fingerprint(request));
+    const data =
+      request.data && typeof request.data === "object" ?
+        (request.data as Record<string, unknown>) :
+        {};
+    const eventKind = String(data.eventKind || "") as PresentationFunnelEventKind;
+    if (!FUNNEL_EVENT_KINDS.has(eventKind)) {
+      throw new HttpsError("invalid-argument", "Evento de funnel inválido.");
+    }
+    const slug = String(data.presentationSlug || data.slug || "")
+      .trim()
+      .toLowerCase();
+    if (!/^[a-z0-9-]{3,48}$/.test(slug)) {
+      throw new HttpsError("invalid-argument", "Slug inválido.");
+    }
+
+    const payload: Record<string, unknown> = {...data};
+    delete payload.eventKind;
+    delete payload.presentationSlug;
+    delete payload.slug;
+    delete payload.clientEventId;
+    delete payload.source;
+    delete payload.bookingDuration;
+    assertNoPiiInFunnelPayload(payload);
+
+    const db = getDefaultDb();
+    const slugSnap = await db.collection(COLLECTIONS.slugs).doc(slug).get();
+    if (!slugSnap.exists || slugSnap.data()?.isActive === false) {
+      throw new HttpsError("not-found", "Presentación no encontrada.");
+    }
+    const ownerUid = String(slugSnap.data()?.uid || "");
+    if (!ownerUid) {
+      throw new HttpsError("not-found", "Presentación no encontrada.");
+    }
+
+    const result = await recordPresentationFunnelEvent({
+      eventKind,
+      presentationSlug: slug,
+      ownerUid,
+      clientEventId: typeof data.clientEventId === "string" ? data.clientEventId : null,
+      source: typeof data.source === "string" ? data.source : "presentation",
+      bookingDuration:
+        typeof data.bookingDuration === "number" ? data.bookingDuration : undefined,
+    });
+
+    return {ok: true, ...result};
+  } catch (error) {
+    asHttpsError(error);
+  }
+});

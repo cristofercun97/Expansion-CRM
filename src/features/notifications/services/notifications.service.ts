@@ -19,7 +19,8 @@ function mapType(value: unknown): AppNotificationType {
     value === 'meeting_invitation' ||
     value === 'meeting_rescheduled' ||
     value === 'meeting_cancelled' ||
-    value === 'meeting_result_pending'
+    value === 'meeting_result_pending' ||
+    value === 'public_booking_created'
   ) {
     return value
   }

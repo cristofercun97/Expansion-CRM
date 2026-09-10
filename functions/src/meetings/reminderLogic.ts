@@ -104,7 +104,8 @@ export type NotificationType =
   | "meeting_invitation"
   | "meeting_rescheduled"
   | "meeting_cancelled"
-  | "meeting_result_pending";
+  | "meeting_result_pending"
+  | "public_booking_created";
 
 export function buildNotificationDedupeKey(parts: string[]): string {
   return parts.map((part) => part.trim()).filter(Boolean).join("_");

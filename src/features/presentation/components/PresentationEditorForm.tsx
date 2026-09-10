@@ -21,6 +21,7 @@ import {
   PRESENTATION_EDITOR_STEPS,
 } from '@/features/presentation/constants/presentationEditorSteps'
 import { PRESENTATION_EDITOR_SECTIONS } from '@/features/presentation/constants/presentationSectionGuides'
+import { formatBookingConversionRate } from '@/features/presentation/utils/bookingFunnelMetrics'
 import {
   PRESENTATION_CONTENT_TYPES,
   PRESENTATION_MODULE,
@@ -42,6 +43,11 @@ type PresentationEditorFormProps = {
   publishing: boolean
   isPublished: boolean
   slug: string
+  bookingFunnel?: {
+    views: number
+    bookingClicks: number
+    bookings: number
+  }
   onSlugChange: (value: string) => void
   onPublish: () => void
   onUnpublish: () => void
@@ -142,6 +148,7 @@ export function PresentationEditorForm({
   publishing,
   isPublished,
   slug,
+  bookingFunnel,
   onSlugChange,
   onPublish,
   onUnpublish,
@@ -630,6 +637,36 @@ export function PresentationEditorForm({
                   Duración Fase 1: 30 minutos. Zona horaria: {form.booking.timezone}. El botón del
                   recurso gratuito enlazará a /reservar/{'{slug}'}.
                 </p>
+                {bookingFunnel ? (
+                  <div
+                    className="rounded-xl border border-[#c5e0db] bg-white/70 p-3"
+                    data-testid="presentation-booking-metrics"
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[#0f3d3a]/80">
+                      Métricas de reserva
+                    </p>
+                    <dl className="mt-2 grid grid-cols-2 gap-2 text-sm text-[#0f3d3a] sm:grid-cols-4">
+                      <div>
+                        <dt className="text-[11px] text-[#5b6b69]">Vistas</dt>
+                        <dd className="font-semibold tabular-nums">{bookingFunnel.views}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-[11px] text-[#5b6b69]">Clics agendar</dt>
+                        <dd className="font-semibold tabular-nums">{bookingFunnel.bookingClicks}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-[11px] text-[#5b6b69]">Reservas</dt>
+                        <dd className="font-semibold tabular-nums">{bookingFunnel.bookings}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-[11px] text-[#5b6b69]">Conversión</dt>
+                        <dd className="font-semibold tabular-nums">
+                          {formatBookingConversionRate(bookingFunnel)}
+                        </dd>
+                      </div>
+                    </dl>
+                  </div>
+                ) : null}
               </>
             ) : null}
           </div>

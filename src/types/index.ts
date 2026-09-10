@@ -114,6 +114,7 @@ export type LeadActivityEventKind =
   | 'meeting_no_show'
   | 'meeting_cancelled'
   | 'next_action_created'
+  | 'booking_created'
 
 export interface LeadActivity {
   id?: string

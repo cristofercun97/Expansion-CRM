@@ -15,6 +15,7 @@ import {
   type PublicBookingConfirmation,
   type PublicBookingLeadInput,
 } from '@/features/presentation/services/publicBooking.service'
+import { presentationFunnelService } from '@/features/presentation/services/presentationFunnel.service'
 import {
   composeWhatsApp,
   formatLongDate,
@@ -75,6 +76,7 @@ export function PublicBookingPage() {
   const [confirmation, setConfirmation] = useState<PublicBookingConfirmation | null>(null)
   const [clientRequestId] = useState(() => createClientRequestId())
   const [loadFailedNotFound, setLoadFailedNotFound] = useState(false)
+  const [bookingDisabled, setBookingDisabled] = useState(false)
   const notFound = !slug || loadFailedNotFound
 
   const dateKeys = useMemo(() => Object.keys(dates).sort(), [dates])
@@ -118,10 +120,19 @@ export function PublicBookingPage() {
             setCalendarMonth(m)
           }
         }
+
+        void presentationFunnelService.trackPresentationFunnelEvent({
+          eventKind: 'booking_started',
+          presentationSlug: slug,
+          source: 'public_booking',
+          bookingDuration: availability.durationMinutes,
+          oncePerSession: true,
+        })
       })
       .catch((error: Error) => {
         if (cancelled) return
         if (error.message === 'not-found') setLoadFailedNotFound(true)
+        else if (error.message === 'booking_disabled') setBookingDisabled(true)
         else setAvailabilityError('No pudimos cargar la disponibilidad. Inténtalo de nuevo.')
       })
       .finally(() => {
@@ -199,18 +210,32 @@ export function PublicBookingPage() {
     }
   }
 
-  if (notFound) {
+  if (notFound || bookingDisabled) {
     return (
       <main className="pb-notfound">
         <div>
-          <h1 className="pb-title">Reserva no disponible</h1>
+          <h1 className="pb-title">
+            {bookingDisabled ? 'Reservas no disponibles' : 'Reserva no disponible'}
+          </h1>
           <p style={{ color: 'var(--color-text-soft)' }}>
-            Este enlace no existe, no está activo o no admite reservas.
+            {bookingDisabled
+              ? 'Las reservas no están disponibles en este momento.'
+              : 'Este enlace no existe, no está activo o no admite reservas.'}
           </p>
           <p style={{ marginTop: '1rem' }}>
-            <Link to="/" className="pb-btn pb-btn-secondary" style={{ display: 'inline-flex' }}>
-              Volver al inicio
-            </Link>
+            {slug ? (
+              <Link
+                to={`/p/${slug}`}
+                className="pb-btn pb-btn-secondary"
+                style={{ display: 'inline-flex' }}
+              >
+                Volver a la presentación
+              </Link>
+            ) : (
+              <Link to="/" className="pb-btn pb-btn-secondary" style={{ display: 'inline-flex' }}>
+                Volver al inicio
+              </Link>
+            )}
           </p>
         </div>
       </main>
@@ -249,6 +274,7 @@ export function PublicBookingPage() {
               dateLabel={formatLongDate(confirmation.date)}
               time={confirmation.time}
               durationMinutes={confirmation.duration}
+              presentationSlug={slug}
             />
           ) : null}
 
