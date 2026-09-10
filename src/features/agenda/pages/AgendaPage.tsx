@@ -1,25 +1,30 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { CalendarDays, ChevronLeft, ChevronRight, Filter, Loader2, Plus, Search, X } from 'lucide-react'
+import { CalendarDays, Filter, Loader2, Search } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { Button, EmptyState, Input } from '@/components/ui'
 import { useToast } from '@/components/ui/toast/ToastProvider'
+import { AgendaCalendarDayView } from '@/features/agenda/components/AgendaCalendarDayView'
+import { AgendaCalendarMonthView } from '@/features/agenda/components/AgendaCalendarMonthView'
+import { AgendaCalendarWeekView } from '@/features/agenda/components/AgendaCalendarWeekView'
+import { AgendaDayDetailsPanel } from '@/features/agenda/components/AgendaDayDetailsPanel'
+import { AgendaFiltersPanel } from '@/features/agenda/components/AgendaFiltersPanel'
+import { AgendaMetricsPanel } from '@/features/agenda/components/AgendaMetricsPanel'
+import { AgendaMobileFiltersDrawer } from '@/features/agenda/components/AgendaMobileFiltersDrawer'
+import { AgendaToolbar } from '@/features/agenda/components/AgendaToolbar'
+import { CreateMeetingNextActionModal } from '@/features/agenda/components/CreateMeetingNextActionModal'
 import { GoogleCalendarStatusCard } from '@/features/agenda/components/GoogleCalendarStatusCard'
 import { MeetingCard } from '@/features/agenda/components/MeetingCard'
 import { MeetingDetailModal } from '@/features/agenda/components/MeetingDetailModal'
-import { CreateMeetingNextActionModal } from '@/features/agenda/components/CreateMeetingNextActionModal'
 import { RecordMeetingResultModal } from '@/features/agenda/components/RecordMeetingResultModal'
 import { RescheduleMeetingModal } from '@/features/agenda/components/RescheduleMeetingModal'
 import { ScheduleMeetingModal } from '@/features/agenda/components/ScheduleMeetingModal'
-import { TeamBusySlotCard } from '@/features/agenda/components/TeamBusySlotCard'
-import { AgendaMetricsPanel } from '@/features/agenda/components/AgendaMetricsPanel'
+import { useAgendaMetrics } from '@/features/agenda/hooks/useAgendaMetrics'
 import { useMeetings } from '@/features/agenda/hooks/useMeetings'
 import { useTeamAgenda } from '@/features/agenda/hooks/useTeamAgenda'
-import { useAgendaMetrics } from '@/features/agenda/hooks/useAgendaMetrics'
 import type { TeamAgendaSlot } from '@/features/agenda/services/team-agenda-functions.service'
 import type {
   GoogleCalendarConnectionStatus,
   Meeting,
-  MeetingAudience,
   MeetingMode,
   MeetingStatus,
 } from '@/features/agenda/types/meeting.types'
@@ -46,46 +51,19 @@ import {
   startOfWeek,
   timestampToDate,
 } from '@/features/agenda/utils/meetingDateUtils'
+import { listAccessibleTeamsForScheduling } from '@/features/agenda/utils/meetingGroupService'
 import { contactsService } from '@/features/contacts/services/contacts.service'
 import type { Contact } from '@/features/contacts/types/contact.types'
-import { listAccessibleTeamsForScheduling } from '@/features/agenda/utils/meetingGroupService'
 import { teamService } from '@/features/team/services/team.service'
 import { cn } from '@/lib/utils'
-
-const VIEW_OPTIONS: Array<{ id: AgendaCalendarView; label: string; mobilePriority?: boolean }> = [
-  { id: 'day', label: 'Día', mobilePriority: true },
-  { id: 'list', label: 'Lista', mobilePriority: true },
-  { id: 'week', label: 'Semana' },
-  { id: 'month', label: 'Mes' },
-]
-
-const STATUS_OPTIONS: Array<{ id: MeetingStatus; label: string }> = [
-  { id: 'scheduled', label: 'Programada' },
-  { id: 'completed', label: 'Realizada' },
-  { id: 'no_show', label: 'No asistió' },
-  { id: 'cancelled', label: 'Cancelada' },
-]
-
-const MODE_OPTIONS: Array<{ id: MeetingMode; label: string }> = [
-  { id: 'video', label: 'Video' },
-  { id: 'in_person', label: 'Presencial' },
-  { id: 'other', label: 'Otra' },
-]
-
-const AUDIENCE_OPTIONS: Array<{ id: MeetingAudience; label: string }> = [
-  { id: 'individual', label: 'Individual' },
-  { id: 'group', label: 'Grupo' },
-]
-
-function toggleInList<T extends string>(list: T[], value: T): T[] {
-  return list.includes(value) ? list.filter((item) => item !== value) : [...list, value]
-}
 
 export function AgendaPage() {
   const { showToast } = useToast()
   const [searchParams, setSearchParams] = useSearchParams()
   const [viewMode, setViewMode] = useState<AgendaCalendarView>(() => loadAgendaViewPreference('list'))
   const [anchorDate, setAnchorDate] = useState(() => startOfDay(new Date()))
+  const [selectedDay, setSelectedDay] = useState<Date | null>(() => startOfDay(new Date()))
+  const [dayPanelOpen, setDayPanelOpen] = useState(false)
   const [agendaScope, setAgendaScope] = useState<'mine' | 'team'>('mine')
   const [teamMemberFilter, setTeamMemberFilter] = useState<string>('all')
   const [teamRoster, setTeamRoster] = useState<Array<{ uid: string; name: string }>>([])
@@ -149,6 +127,9 @@ export function AgendaPage() {
   })
 
   const rangeLabel = formatViewRangeLabel(effectiveViewMode, anchorDate)
+  const detailDay = selectedDay ?? anchorDate
+  const showDaySidebar =
+    dayPanelOpen && (effectiveViewMode === 'week' || effectiveViewMode === 'month')
 
   const handleGoogleStatusChange = useCallback((status: GoogleCalendarConnectionStatus) => {
     setGoogleStatus(status)
@@ -313,6 +294,25 @@ export function AgendaPage() {
       .sort((left, right) => Date.parse(left.startAt) - Date.parse(right.startAt))
   }, [filteredTeamSlots, anchorDate])
 
+  const detailMeetingsSorted = useMemo(() => {
+    return [...filteredMeetings]
+      .filter((meeting) => {
+        const start = timestampToDate(meeting.startAt)
+        return start ? isSameDay(start, detailDay) : false
+      })
+      .sort((left, right) => {
+        const leftMs = timestampToDate(left.startAt)?.getTime() ?? 0
+        const rightMs = timestampToDate(right.startAt)?.getTime() ?? 0
+        return leftMs - rightMs
+      })
+  }, [filteredMeetings, detailDay])
+
+  const detailTeamSlotsSorted = useMemo(() => {
+    return [...filteredTeamSlots]
+      .filter((slot) => isSameDay(new Date(slot.startAt), detailDay))
+      .sort((left, right) => Date.parse(left.startAt) - Date.parse(right.startAt))
+  }, [filteredTeamSlots, detailDay])
+
   const weekDays = useMemo(() => {
     const start = startOfWeek(anchorDate)
     return Array.from({ length: 7 }, (_, index) => addDays(start, index))
@@ -334,14 +334,19 @@ export function AgendaPage() {
     if (agendaScope === 'team' && mode === 'list') {
       setViewMode('day')
       saveAgendaViewPreference('day')
+      setDayPanelOpen(false)
       return
     }
     setViewMode(mode)
     saveAgendaViewPreference(mode)
+    if (mode === 'day' || mode === 'list') {
+      setDayPanelOpen(false)
+    }
   }
 
   function setScope(scope: 'mine' | 'team') {
     setAgendaScope(scope)
+    setDayPanelOpen(false)
   }
 
   function openCreate() {
@@ -350,6 +355,19 @@ export function AgendaPage() {
     setPreselectedContactId(undefined)
     setScheduleSession((value) => value + 1)
     setScheduleOpen(true)
+  }
+
+  function handleSelectDay(day: Date) {
+    const next = startOfDay(day)
+    setSelectedDay(next)
+    if (effectiveViewMode === 'day') {
+      setAnchorDate(next)
+      setDayPanelOpen(false)
+      return
+    }
+    if (effectiveViewMode === 'week' || effectiveViewMode === 'month') {
+      setDayPanelOpen(true)
+    }
   }
 
   function handleSaved(meeting: Meeting) {
@@ -365,189 +383,186 @@ export function AgendaPage() {
     setFilters(EMPTY_ADVANCED_FILTERS)
   }
 
-  const filtersPanel = (
-    <div className="space-y-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-hero-text">Filtros</p>
-        <button
-          type="button"
-          className="text-xs font-medium text-gold-light hover:underline"
-          onClick={clearFilters}
-        >
-          Limpiar filtros
-        </button>
-      </div>
+  const filterProps = {
+    filters,
+    onChange: setFilters,
+    onClear: clearFilters,
+    isTeamScope,
+    accessibleGroups,
+    activeFilterCount,
+  }
 
-      <div>
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-hero-text/55">Estado</p>
-        <div className="flex flex-wrap gap-2">
-          {STATUS_OPTIONS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() =>
-                setFilters((current) => ({
-                  ...current,
-                  statuses: toggleInList(current.statuses, item.id),
-                }))
-              }
-              className={cn(
-                'min-h-9 rounded-lg border px-2.5 text-xs font-medium',
-                filters.statuses.includes(item.id)
-                  ? 'border-gold bg-gold/15 text-gold-light'
-                  : 'border-white/15 bg-white/5 text-hero-text/75',
-              )}
-            >
-              {item.label}
-            </button>
+  function renderCalendarBody() {
+    if (isTeamScope) {
+      if (teamLoading) {
+        return (
+          <p className="flex items-center gap-2 text-sm text-hero-text/70">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Cargando agenda del equipo...
+          </p>
+        )
+      }
+      if (teamError) {
+        return (
+          <p className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            {teamError}
+          </p>
+        )
+      }
+      if (effectiveViewMode === 'day') {
+        return (
+          <AgendaCalendarDayView
+            mode="team"
+            day={anchorDate}
+            slots={dayTeamSlotsSorted}
+            memberNameByUid={memberNameByUid}
+            resolveAccessibleMeeting={resolveAccessibleMeeting}
+            onOpenMeeting={setSelectedMeeting}
+          />
+        )
+      }
+      if (effectiveViewMode === 'week') {
+        return (
+          <AgendaCalendarWeekView
+            mode="team"
+            weekDays={weekDays}
+            selectedDay={selectedDay}
+            onSelectDay={handleSelectDay}
+            slots={filteredTeamSlots}
+            memberNameByUid={memberNameByUid}
+            resolveAccessibleMeeting={resolveAccessibleMeeting}
+            onOpenMeeting={setSelectedMeeting}
+          />
+        )
+      }
+      return (
+        <AgendaCalendarMonthView
+          mode="team"
+          monthDays={monthDays}
+          monthCursor={monthCursor}
+          selectedDay={selectedDay}
+          onSelectDay={handleSelectDay}
+          slots={filteredTeamSlots}
+          memberNameByUid={memberNameByUid}
+          resolveAccessibleMeeting={resolveAccessibleMeeting}
+          onOpenMeeting={setSelectedMeeting}
+        />
+      )
+    }
+
+    if (loading) {
+      return (
+        <p className="flex items-center gap-2 text-sm text-hero-text/70">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Cargando agenda...
+        </p>
+      )
+    }
+
+    if (error) {
+      return (
+        <p className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          {error}
+        </p>
+      )
+    }
+
+    if (effectiveViewMode === 'list') {
+      if (filteredMeetings.length === 0) {
+        return (
+          <EmptyState
+            icon={CalendarDays}
+            title="No hay reuniones en este rango."
+            description="Prueba otro periodo, limpia filtros o agenda una nueva conversación."
+            className="border-white/15 bg-white/5 [&_h3]:text-hero-text [&_p]:text-hero-text/70"
+            action={
+              <Button
+                type="button"
+                onClick={openCreate}
+                className="bg-gold text-petrol-deep hover:bg-gold-light"
+              >
+                Nueva reunión
+              </Button>
+            }
+          />
+        )
+      }
+      return (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {filteredMeetings.map((meeting) => (
+            <MeetingCard
+              key={meeting.id}
+              meeting={meeting}
+              currentUserId={currentUserId}
+              onOpen={setSelectedMeeting}
+            />
           ))}
         </div>
-      </div>
+      )
+    }
 
-      <div>
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-hero-text/55">Tipo</p>
-        <div className="flex flex-wrap gap-2">
-          {MODE_OPTIONS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() =>
-                setFilters((current) => ({
-                  ...current,
-                  modes: toggleInList(current.modes, item.id),
-                }))
-              }
-              className={cn(
-                'min-h-9 rounded-lg border px-2.5 text-xs font-medium',
-                filters.modes.includes(item.id)
-                  ? 'border-gold bg-gold/15 text-gold-light'
-                  : 'border-white/15 bg-white/5 text-hero-text/75',
-              )}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      </div>
+    if (effectiveViewMode === 'day') {
+      return (
+        <AgendaCalendarDayView
+          mode="personal"
+          day={anchorDate}
+          meetings={dayMeetingsSorted}
+          currentUserId={currentUserId}
+          onOpenMeeting={setSelectedMeeting}
+        />
+      )
+    }
 
-      {!isTeamScope ? (
-        <>
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-hero-text/55">
-              Audiencia
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {AUDIENCE_OPTIONS.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() =>
-                    setFilters((current) => ({
-                      ...current,
-                      audiences: toggleInList(current.audiences, item.id),
-                    }))
-                  }
-                  className={cn(
-                    'min-h-9 rounded-lg border px-2.5 text-xs font-medium',
-                    filters.audiences.includes(item.id)
-                      ? 'border-gold bg-gold/15 text-gold-light'
-                      : 'border-white/15 bg-white/5 text-hero-text/75',
-                  )}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          </div>
+    if (effectiveViewMode === 'week') {
+      return (
+        <AgendaCalendarWeekView
+          mode="personal"
+          weekDays={weekDays}
+          selectedDay={selectedDay}
+          onSelectDay={handleSelectDay}
+          meetings={filteredMeetings}
+          onOpenMeeting={setSelectedMeeting}
+        />
+      )
+    }
 
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-hero-text/55">
-              Grupo
-            </p>
-            <select
-              className="min-h-10 w-full rounded-lg border border-white/15 bg-petrol-deep px-3 text-sm text-hero-text"
-              value={filters.groupId || ''}
-              onChange={(event) =>
-                setFilters((current) => ({
-                  ...current,
-                  groupId: event.target.value || null,
-                }))
-              }
-            >
-              <option value="">Todos los grupos accesibles</option>
-              {accessibleGroups.map((group) => (
-                <option key={group.id} value={group.id}>
-                  {group.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-hero-text/55">Rol</p>
-            <div className="flex flex-wrap gap-2">
-              {(
-                [
-                  ['all', 'Todos'],
-                  ['organized', 'Organizadas por mí'],
-                  ['invited', 'Invitado'],
-                ] as const
-              ).map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setFilters((current) => ({ ...current, role: id }))}
-                  className={cn(
-                    'min-h-9 rounded-lg border px-2.5 text-xs font-medium',
-                    filters.role === id
-                      ? 'border-gold bg-gold/15 text-gold-light'
-                      : 'border-white/15 bg-white/5 text-hero-text/75',
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </>
-      ) : null}
-    </div>
-  )
+    return (
+      <AgendaCalendarMonthView
+        mode="personal"
+        monthDays={monthDays}
+        monthCursor={monthCursor}
+        selectedDay={selectedDay}
+        onSelectDay={handleSelectDay}
+        meetings={filteredMeetings}
+        onOpenMeeting={setSelectedMeeting}
+      />
+    )
+  }
 
   return (
-    <div className="space-y-6 px-4 py-6 sm:px-8">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gold-light">
-            Sistema de crecimiento
-          </p>
-          <h1 className="mt-1 text-3xl font-semibold text-hero-text">Agenda</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-hero-text/70">
-            Organiza tus reuniones, conecta con tus contactos y no pierdas ningún seguimiento.
-          </p>
-        </div>
-        <Button
-          type="button"
-          onClick={openCreate}
-          className="min-h-11 bg-gold text-petrol-deep hover:bg-gold-light"
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Nueva reunión
-        </Button>
+    <div className="space-y-5 px-4 py-6 sm:px-8">
+      <header className="flex flex-col gap-2">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gold-light">
+          Sistema de crecimiento
+        </p>
+        <h1 className="text-3xl font-semibold tracking-tight text-hero-text">Agenda</h1>
+        <p className="max-w-2xl text-sm leading-relaxed text-hero-text/70">
+          Organiza, acompaña y haz crecer cada relación.
+        </p>
       </header>
 
       <GoogleCalendarStatusCard onStatusChange={handleGoogleStatusChange} />
 
       {canShowTeamScope ? (
-        <div className="flex flex-wrap gap-2">
+        <div className="inline-flex rounded-xl border border-white/12 bg-white/[0.04] p-1">
           <button
             type="button"
             onClick={() => setScope('mine')}
             className={cn(
-              'min-h-10 rounded-lg border px-3 text-sm font-medium',
+              'min-h-9 rounded-lg px-3 text-sm font-medium transition-colors',
               agendaScope === 'mine'
-                ? 'border-teal-accent/40 bg-teal-accent/15 text-teal-accent'
-                : 'border-white/15 bg-white/5 text-hero-text/75',
+                ? 'bg-teal-accent/20 text-teal-accent'
+                : 'text-hero-text/70 hover:bg-white/5',
             )}
           >
             Mi agenda
@@ -556,10 +571,10 @@ export function AgendaPage() {
             type="button"
             onClick={() => setScope('team')}
             className={cn(
-              'min-h-10 rounded-lg border px-3 text-sm font-medium',
+              'min-h-9 rounded-lg px-3 text-sm font-medium transition-colors',
               agendaScope === 'team'
-                ? 'border-teal-accent/40 bg-teal-accent/15 text-teal-accent'
-                : 'border-white/15 bg-white/5 text-hero-text/75',
+                ? 'bg-teal-accent/20 text-teal-accent'
+                : 'text-hero-text/70 hover:bg-white/5',
             )}
           >
             Agenda del equipo
@@ -568,7 +583,7 @@ export function AgendaPage() {
       ) : null}
 
       {isTeamScope ? (
-        <div className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs text-hero-text/70">
+        <div className="rounded-xl border border-white/12 bg-white/[0.04] px-3 py-2.5 text-xs text-hero-text/70">
           Disponibilidad operativa del equipo. No se muestran notas, enlaces ni detalles privados de
           reuniones ajenas.
           <div className="mt-2">
@@ -588,75 +603,28 @@ export function AgendaPage() {
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-wrap gap-2">
-          {VIEW_OPTIONS.filter((item) => !(isTeamScope && item.id === 'list')).map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => changeView(item.id)}
-              className={cn(
-                'min-h-10 rounded-lg border px-3 text-sm font-medium',
-                !item.mobilePriority && 'hidden sm:inline-flex',
-                item.mobilePriority && 'inline-flex',
-                viewMode === item.id || effectiveViewMode === item.id
-                  ? 'border-teal-accent/40 bg-teal-accent/15 text-teal-accent'
-                  : 'border-white/15 bg-white/5 text-hero-text/75',
-              )}
-            >
-              {item.label}
-            </button>
-          ))}
-          <div className="flex gap-2 sm:hidden">
-            {VIEW_OPTIONS.filter(
-              (item) => !item.mobilePriority && !(isTeamScope && item.id === 'list'),
-            ).map((item) => (
-              <button
-                key={`m-${item.id}`}
-                type="button"
-                onClick={() => changeView(item.id)}
-                className={cn(
-                  'min-h-10 rounded-lg border px-3 text-sm font-medium',
-                  viewMode === item.id || effectiveViewMode === item.id
-                    ? 'border-teal-accent/40 bg-teal-accent/15 text-teal-accent'
-                    : 'border-white/15 bg-white/5 text-hero-text/75',
-                )}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            aria-label="Anterior"
-            className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg border border-white/15 bg-white/5 text-hero-text"
-            onClick={() => setAnchorDate((current) => shiftAnchor(effectiveViewMode, current, -1))}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            className="min-h-10 rounded-lg border border-white/15 bg-white/5 px-3 text-sm font-medium text-hero-text"
-            onClick={() => setAnchorDate(startOfDay(new Date()))}
-          >
-            Hoy
-          </button>
-          <button
-            type="button"
-            aria-label="Siguiente"
-            className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg border border-white/15 bg-white/5 text-hero-text"
-            onClick={() => setAnchorDate((current) => shiftAnchor(effectiveViewMode, current, 1))}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
-          <p className="min-w-0 flex-1 truncate text-sm font-semibold capitalize text-hero-text sm:flex-none">
-            {rangeLabel}
-          </p>
-        </div>
-      </div>
+      <AgendaToolbar
+        rangeLabel={rangeLabel}
+        effectiveViewMode={effectiveViewMode}
+        viewMode={viewMode}
+        isTeamScope={isTeamScope}
+        onChangeView={changeView}
+        onPrev={() => {
+          setAnchorDate((current) => shiftAnchor(effectiveViewMode, current, -1))
+          setDayPanelOpen(false)
+        }}
+        onNext={() => {
+          setAnchorDate((current) => shiftAnchor(effectiveViewMode, current, 1))
+          setDayPanelOpen(false)
+        }}
+        onToday={() => {
+          const today = startOfDay(new Date())
+          setAnchorDate(today)
+          setSelectedDay(today)
+          setDayPanelOpen(false)
+        }}
+        onCreate={openCreate}
+      />
 
       <AgendaMetricsPanel
         canShowTeam={canShowTeamScope}
@@ -677,8 +645,8 @@ export function AgendaPage() {
         }}
       />
 
-      {!isTeamScope ? (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        {!isTeamScope ? (
           <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-hero-text/45" />
             <Input
@@ -690,347 +658,93 @@ export function AgendaPage() {
               className="min-h-11 border-white/15 bg-white/5 pl-10 text-hero-text placeholder:text-hero-text/40"
             />
           </div>
-          <button
-            type="button"
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/5 px-3 text-sm font-medium text-hero-text lg:hidden"
-            onClick={() => setFiltersOpen(true)}
-          >
-            <Filter className="h-4 w-4" />
-            Filtros{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
-          </button>
-        </div>
-      ) : (
-        <div className="flex justify-end lg:hidden">
-          <button
-            type="button"
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/5 px-3 text-sm font-medium text-hero-text"
-            onClick={() => setFiltersOpen(true)}
-          >
-            <Filter className="h-4 w-4" />
-            Filtros{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
-          </button>
-        </div>
-      )}
-
-      <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
-        <div className="hidden lg:block">{filtersPanel}</div>
-
-        <div className="min-w-0">
-          {isTeamScope ? (
-            teamLoading ? (
-              <p className="flex items-center gap-2 text-sm text-hero-text/70">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Cargando agenda del equipo...
-              </p>
-            ) : teamError ? (
-              <p className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                {teamError}
-              </p>
-            ) : filteredTeamSlots.length === 0 ? (
-              <EmptyState
-                icon={CalendarDays}
-                title="No hay reuniones del equipo en este período."
-                description="Prueba otro período, otro miembro o limpia los filtros."
-                className="border-white/15 bg-white/5 [&_h3]:text-hero-text [&_p]:text-hero-text/70"
-              />
-            ) : effectiveViewMode === 'day' ? (
-              <div className="space-y-3">
-                {dayTeamSlotsSorted.map((slot) => (
-                  <TeamBusySlotCard
-                    key={`${slot.meetingId}-${slot.memberUid}`}
-                    slot={slot}
-                    memberName={memberNameByUid.get(slot.memberUid) || 'Miembro'}
-                    accessibleMeeting={resolveAccessibleMeeting(slot)}
-                    onOpenAccessible={setSelectedMeeting}
-                  />
-                ))}
-              </div>
-            ) : effectiveViewMode === 'week' ? (
-              <div className="space-y-3 sm:overflow-x-auto">
-                <div className="grid gap-3 sm:min-w-[640px] sm:grid-cols-7">
-                  {weekDays.map((day) => {
-                    const items = filteredTeamSlots.filter((slot) =>
-                      isSameDay(new Date(slot.startAt), day),
-                    )
-                    return (
-                      <div
-                        key={day.toISOString()}
-                        className="rounded-2xl border border-white/10 bg-white/5 p-3"
-                      >
-                        <p className="text-xs font-semibold uppercase tracking-wide text-hero-text/55">
-                          {day.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric' })}
-                        </p>
-                        <div className="mt-2 space-y-2">
-                          {items.length === 0 ? (
-                            <p className="text-xs text-hero-text/40">Libre</p>
-                          ) : (
-                            items.map((slot) => {
-                              const accessible = resolveAccessibleMeeting(slot)
-                              return (
-                                <button
-                                  key={`${slot.meetingId}-${slot.memberUid}`}
-                                  type="button"
-                                  onClick={() => {
-                                    if (accessible) setSelectedMeeting(accessible)
-                                  }}
-                                  className="w-full rounded-lg border border-white/15 bg-white/5 px-2 py-2 text-left text-xs text-hero-text"
-                                >
-                                  <span className="block font-semibold">
-                                    {memberNameByUid.get(slot.memberUid) || 'Miembro'}
-                                  </span>
-                                  <span className="text-hero-text/65">
-                                    {new Date(slot.startAt).toLocaleTimeString('es-ES', {
-                                      hour: '2-digit',
-                                      minute: '2-digit',
-                                    })}{' '}
-                                    · {slot.busy ? 'Ocupado' : 'Reunión'}
-                                  </span>
-                                </button>
-                              )
-                            })
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3 overflow-x-auto">
-                <div className="grid min-w-[560px] grid-cols-7 gap-1 text-center text-[11px] font-semibold uppercase tracking-wide text-hero-text/45 sm:gap-2 sm:text-xs">
-                  {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((label) => (
-                    <div key={label} className="py-1">
-                      {label}
-                    </div>
-                  ))}
-                </div>
-                <div className="grid min-w-[560px] grid-cols-7 gap-1 sm:gap-2">
-                  {monthDays.map((day) => {
-                    const inCurrentMonth = day.getMonth() === monthCursor.getMonth()
-                    const items = filteredTeamSlots.filter((slot) =>
-                      isSameDay(new Date(slot.startAt), day),
-                    )
-                    const isToday = isSameDay(day, new Date())
-                    return (
-                      <button
-                        key={day.toISOString()}
-                        type="button"
-                        onClick={() => {
-                          setAnchorDate(startOfDay(day))
-                          changeView('day')
-                        }}
-                        className={cn(
-                          'min-h-20 rounded-xl border p-1.5 text-left sm:min-h-24 sm:p-2',
-                          inCurrentMonth
-                            ? 'border-white/10 bg-white/5'
-                            : 'border-white/5 bg-white/[0.02] opacity-55',
-                          isToday && 'border-gold/40',
-                        )}
-                      >
-                        <p
-                          className={cn(
-                            'text-xs font-semibold',
-                            isToday ? 'text-gold-light' : 'text-hero-text/70',
-                          )}
-                        >
-                          {day.getDate()}
-                        </p>
-                        {items.length > 0 ? (
-                          <p className="mt-2 text-[11px] text-hero-text/65">
-                            {items.length} ocupado{items.length === 1 ? '' : 's'}
-                          </p>
-                        ) : null}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          ) : loading ? (
-            <p className="flex items-center gap-2 text-sm text-hero-text/70">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Cargando agenda...
-            </p>
-          ) : error ? (
-            <p className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-              {error}
-            </p>
-          ) : filteredMeetings.length === 0 ? (
-            <EmptyState
-              icon={CalendarDays}
-              title="No hay reuniones en este rango."
-              description="Prueba otro periodo, limpia filtros o agenda una nueva conversación."
-              className="border-white/15 bg-white/5 [&_h3]:text-hero-text [&_p]:text-hero-text/70"
-              action={
-                <Button
-                  type="button"
-                  onClick={openCreate}
-                  className="bg-gold text-petrol-deep hover:bg-gold-light"
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Nueva reunión
-                </Button>
-              }
-            />
-          ) : effectiveViewMode === 'day' ? (
-            <div className="space-y-3">
-              {dayMeetingsSorted.map((meeting) => (
-                <MeetingCard
-                  key={meeting.id}
-                  meeting={meeting}
-                  currentUserId={currentUserId}
-                  onOpen={setSelectedMeeting}
-                />
-              ))}
-            </div>
-          ) : effectiveViewMode === 'week' ? (
-            <div className="overflow-x-auto">
-              <div className="grid min-w-[640px] gap-3 md:grid-cols-7">
-                {weekDays.map((day) => {
-                  const items = filteredMeetings.filter((meeting) => {
-                    const start = timestampToDate(meeting.startAt)
-                    return start ? isSameDay(start, day) : false
-                  })
-                  return (
-                    <div
-                      key={day.toISOString()}
-                      className="rounded-2xl border border-white/10 bg-white/5 p-3"
-                    >
-                      <p className="text-xs font-semibold uppercase tracking-wide text-hero-text/55">
-                        {day.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric' })}
-                      </p>
-                      <div className="mt-2 space-y-2">
-                        {items.length === 0 ? (
-                          <p className="text-xs text-hero-text/40">Sin reuniones</p>
-                        ) : (
-                          items.map((meeting) => (
-                            <button
-                              key={meeting.id}
-                              type="button"
-                              onClick={() => setSelectedMeeting(meeting)}
-                              className="w-full rounded-lg border border-gold/20 bg-gold/10 px-2 py-2 text-left text-xs text-hero-text hover:bg-gold/15"
-                            >
-                              <span className="block font-semibold">{meeting.title}</span>
-                              <span className="text-hero-text/65">
-                                {timestampToDate(meeting.startAt)?.toLocaleTimeString('es-ES', {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                              </span>
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          ) : effectiveViewMode === 'month' ? (
-            <div className="space-y-3 overflow-x-auto">
-              <div className="grid min-w-[560px] grid-cols-7 gap-1 text-center text-[11px] font-semibold uppercase tracking-wide text-hero-text/45 sm:gap-2 sm:text-xs">
-                {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((label) => (
-                  <div key={label} className="py-1">
-                    {label}
-                  </div>
-                ))}
-              </div>
-              <div className="grid min-w-[560px] grid-cols-7 gap-1 sm:gap-2">
-                {monthDays.map((day) => {
-                  const inCurrentMonth = day.getMonth() === monthCursor.getMonth()
-                  const items = filteredMeetings.filter((meeting) => {
-                    const start = timestampToDate(meeting.startAt)
-                    return start ? isSameDay(start, day) : false
-                  })
-                  const isToday = isSameDay(day, new Date())
-                  return (
-                    <button
-                      key={day.toISOString()}
-                      type="button"
-                      onClick={() => {
-                        setAnchorDate(startOfDay(day))
-                        changeView('day')
-                      }}
-                      className={cn(
-                        'min-h-20 rounded-xl border p-1.5 text-left sm:min-h-28 sm:p-2',
-                        inCurrentMonth
-                          ? 'border-white/10 bg-white/5'
-                          : 'border-white/5 bg-white/[0.02] opacity-55',
-                        isToday && 'border-gold/40',
-                      )}
-                    >
-                      <p
-                        className={cn(
-                          'text-xs font-semibold',
-                          isToday ? 'text-gold-light' : 'text-hero-text/70',
-                        )}
-                      >
-                        {day.getDate()}
-                      </p>
-                      <div className="mt-1 space-y-1">
-                        {items.slice(0, 3).map((meeting) => (
-                          <span
-                            key={meeting.id}
-                            className="block truncate rounded-md border border-gold/20 bg-gold/10 px-1 py-0.5 text-[10px] text-hero-text sm:text-xs"
-                          >
-                            {meeting.title}
-                          </span>
-                        ))}
-                        {items.length > 3 ? (
-                          <p className="text-[10px] text-hero-text/45">+{items.length - 3}</p>
-                        ) : null}
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {filteredMeetings.map((meeting) => (
-                <MeetingCard
-                  key={meeting.id}
-                  meeting={meeting}
-                  currentUserId={currentUserId}
-                  onOpen={setSelectedMeeting}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+        ) : (
+          <div className="min-w-0 flex-1" />
+        )}
+        <button
+          type="button"
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-3 text-sm font-medium text-hero-text lg:hidden"
+          onClick={() => setFiltersOpen(true)}
+        >
+          <Filter className="h-4 w-4" />
+          Filtros{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+        </button>
       </div>
 
-      {filtersOpen ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center lg:hidden">
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/50"
-            aria-label="Cerrar filtros"
-            onClick={() => setFiltersOpen(false)}
-          />
-          <div className="relative z-10 max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-petrol-deep p-4 shadow-xl">
-            <div className="mb-3 flex items-center justify-between">
-              <p className="text-sm font-semibold text-hero-text">Filtros</p>
-              <button
-                type="button"
-                className="rounded-lg p-1.5 text-hero-text/70"
-                onClick={() => setFiltersOpen(false)}
-                aria-label="Cerrar"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            {filtersPanel}
-            <Button
-              type="button"
-              className="mt-4 w-full bg-gold text-petrol-deep hover:bg-gold-light"
-              onClick={() => setFiltersOpen(false)}
-            >
-              Aplicar
-            </Button>
-          </div>
+      <div
+        className={cn(
+          'grid gap-4',
+          showDaySidebar
+            ? 'lg:grid-cols-[220px_minmax(0,1fr)_300px] xl:grid-cols-[240px_minmax(0,1fr)_320px]'
+            : 'lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[240px_minmax(0,1fr)]',
+        )}
+      >
+        <div className="hidden lg:block">
+          <AgendaFiltersPanel {...filterProps} />
         </div>
+
+        <div className="min-w-0">{renderCalendarBody()}</div>
+
+        {showDaySidebar ? (
+          isTeamScope ? (
+            <AgendaDayDetailsPanel
+              open
+              variant="sidebar"
+              mode="team"
+              day={detailDay}
+              slots={detailTeamSlotsSorted}
+              memberNameByUid={memberNameByUid}
+              resolveAccessibleMeeting={resolveAccessibleMeeting}
+              onOpenMeeting={setSelectedMeeting}
+              onClose={() => setDayPanelOpen(false)}
+            />
+          ) : (
+            <AgendaDayDetailsPanel
+              open
+              variant="sidebar"
+              mode="personal"
+              day={detailDay}
+              meetings={detailMeetingsSorted}
+              onOpenMeeting={setSelectedMeeting}
+              onClose={() => setDayPanelOpen(false)}
+              onCreateForDay={openCreate}
+            />
+          )
+        ) : null}
+      </div>
+
+      {dayPanelOpen && (effectiveViewMode === 'week' || effectiveViewMode === 'month') ? (
+        isTeamScope ? (
+          <AgendaDayDetailsPanel
+            open
+            variant="sheet"
+            mode="team"
+            day={detailDay}
+            slots={detailTeamSlotsSorted}
+            memberNameByUid={memberNameByUid}
+            resolveAccessibleMeeting={resolveAccessibleMeeting}
+            onOpenMeeting={setSelectedMeeting}
+            onClose={() => setDayPanelOpen(false)}
+          />
+        ) : (
+          <AgendaDayDetailsPanel
+            open
+            variant="sheet"
+            mode="personal"
+            day={detailDay}
+            meetings={detailMeetingsSorted}
+            onOpenMeeting={setSelectedMeeting}
+            onClose={() => setDayPanelOpen(false)}
+            onCreateForDay={openCreate}
+          />
+        )
       ) : null}
+
+      <AgendaMobileFiltersDrawer
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        {...filterProps}
+      />
 
       {scheduleOpen ? (
         <ScheduleMeetingModal
