@@ -8,7 +8,6 @@ import { PublicBookingStepper } from '@/features/presentation/components/booking
 import { PublicBookingSuccess } from '@/features/presentation/components/booking/PublicBookingSuccess'
 import { PublicBookingTimeStep } from '@/features/presentation/components/booking/PublicBookingTimeStep'
 import '@/features/presentation/components/booking/publicBooking.css'
-import { presentationService } from '@/features/presentation/services/presentation.service'
 import {
   publicBookingService,
   SESSION_OBJECTIVE_OPTIONS,
@@ -16,7 +15,6 @@ import {
   type PublicBookingConfirmation,
   type PublicBookingLeadInput,
 } from '@/features/presentation/services/publicBooking.service'
-import { mapRecordToForm } from '@/features/presentation/utils/presentationMappers'
 import {
   composeWhatsApp,
   formatLongDate,
@@ -95,29 +93,22 @@ export function PublicBookingPage() {
       setAvailabilityError('')
     })
 
-    void Promise.all([
-      publicBookingService.getPublicBookingAvailability({ slug, dateFrom: from, dateTo: to }),
-      presentationService.getPublishedPresentationBySlug(slug).catch(() => null),
-    ])
-      .then(([availability, record]) => {
+    void publicBookingService
+      .getPublicBookingAvailability({ slug, dateFrom: from, dateTo: to })
+      .then((availability) => {
         if (cancelled) return
-        setProfessionalName(availability.professionalName)
+        const professional = availability.professional
+        setProfessionalName(
+          professional?.displayName?.trim() ||
+            availability.professionalName?.trim() ||
+            'Profesional',
+        )
+        setPhotoUrl(professional?.avatarUrl?.trim() || '')
+        setBrandName(professional?.brandName?.trim() || '')
+        setClaim(professional?.claim?.trim() || '')
         setTimezone(availability.timezone)
         setDurationMinutes(availability.durationMinutes)
         setDates(availability.dates || {})
-        setClaim(availability.bookingDescription || '')
-
-        if (record) {
-          const form = mapRecordToForm(record)
-          setBrandName(form.visualIdentity.brandName.trim())
-          setPhotoUrl(form.visualIdentity.photoUrl.trim())
-          const claimText =
-            availability.bookingDescription?.trim() ||
-            form.booking.description.trim() ||
-            form.mainMessage.subtitle.trim() ||
-            form.mainMessage.valuePhrase.trim()
-          setClaim(claimText)
-        }
 
         const keys = Object.keys(availability.dates || {}).sort()
         if (keys[0]) {
@@ -233,10 +224,12 @@ export function PublicBookingPage() {
     <main className="pb-shell">
       <div className="pb-layout">
         <PublicBookingProfessionalCard
-          name={professionalName}
-          brandName={brandName && brandName !== professionalName ? brandName : undefined}
-          claim={claim}
-          photoUrl={photoUrl}
+          name={professionalName || 'Profesional'}
+          brandName={
+            brandName && brandName !== professionalName ? brandName : undefined
+          }
+          claim={claim || undefined}
+          photoUrl={photoUrl || undefined}
           durationMinutes={durationMinutes}
           timezone={timezone}
         />

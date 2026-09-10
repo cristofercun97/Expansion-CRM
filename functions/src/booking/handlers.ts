@@ -23,6 +23,7 @@ import {
   sanitizeAvailabilityRequest,
   sanitizeCreateBookingRequest,
 } from "./sanitize.js";
+import {buildPublicBookingProfessional, type PublicBookingProfessional} from "./professionalMeta.js";
 
 const googleOAuthClientId = defineSecret("GOOGLE_OAUTH_CLIENT_ID");
 const googleOAuthClientSecret = defineSecret("GOOGLE_OAUTH_CLIENT_SECRET");
@@ -48,6 +49,7 @@ async function resolvePublishedPresentation(slug: string): Promise<{
   slug: string;
   brandName: string;
   booking: BookingConfig;
+  professional: PublicBookingProfessional;
 }> {
   const db = getDefaultFirestore();
   const slugSnap = await db.collection(COLLECTIONS.slugs).doc(slug).get();
@@ -77,12 +79,10 @@ async function resolvePublishedPresentation(slug: string): Promise<{
     throw new HttpsError("failed-precondition", "Las reservas no están habilitadas.");
   }
 
-  const brandName =
-    String(landing.visualIdentity?.brandName || "").trim() ||
-    String(landing.brandName || "").trim() ||
-    "Profesional";
+  const professional = buildPublicBookingProfessional(landing as Record<string, unknown>);
+  const brandName = professional.displayName;
 
-  return {ownerUid, slug, brandName, booking};
+  return {ownerUid, slug, brandName, booking, professional};
 }
 
 async function loadBusyIntervals(
@@ -272,7 +272,8 @@ export const getPublicBookingAvailability = onCall(callableOptions, async (reque
     });
 
     return {
-      professionalName: presentation.brandName,
+      professional: presentation.professional,
+      professionalName: presentation.professional.displayName,
       bookingTitle: presentation.booking.title,
       bookingDescription: presentation.booking.description,
       ...availability,

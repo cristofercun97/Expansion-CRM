@@ -2,7 +2,15 @@ import { httpsCallable } from 'firebase/functions'
 import { getFunctions } from 'firebase/functions'
 import { getFirebaseApp } from '@/lib/firebase'
 
+export type PublicBookingProfessional = {
+  displayName: string
+  avatarUrl: string | null
+  brandName: string | null
+  claim: string | null
+}
+
 export type PublicBookingAvailability = {
+  professional: PublicBookingProfessional
   professionalName: string
   bookingTitle: string
   bookingDescription: string

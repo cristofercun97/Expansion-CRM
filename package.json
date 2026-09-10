@@ -27,7 +27,8 @@
     "test:agenda-rules": "firebase emulators:exec --only firestore --project expansion-agenda-rules-test \"tsx scripts/test-agenda-rules.ts\"",
     "test:presentation-booking": "tsx scripts/test-presentation-booking-phase1.ts",
     "test:presentation-booking-rules": "firebase emulators:exec --only firestore --project expansion-booking-rules-test \"tsx scripts/test-presentation-booking-rules.ts\"",
-    "test:presentation-booking-ui": "tsx scripts/test-presentation-booking-ui.ts"
+    "test:presentation-booking-ui": "tsx scripts/test-presentation-booking-ui.ts",
+    "test:presentation-booking-meta": "tsx scripts/test-presentation-booking-meta.ts"
   },
   "dependencies": {
     "firebase": "^12.14.0",
