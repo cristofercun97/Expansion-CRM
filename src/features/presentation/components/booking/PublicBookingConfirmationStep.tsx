@@ -4,8 +4,6 @@ type Props = {
   time: string
   durationMinutes: number
   participantName: string
-  reason: string
-  objective: string
   submitting: boolean
   error?: string
   onBack: () => void
@@ -18,8 +16,6 @@ export function PublicBookingConfirmationStep({
   time,
   durationMinutes,
   participantName,
-  reason,
-  objective,
   submitting,
   error,
   onBack,
@@ -52,16 +48,6 @@ export function PublicBookingConfirmationStep({
           <span className="pb-summary-k">Participante</span>
           <p className="pb-summary-v">{participantName}</p>
         </div>
-        <div className="pb-summary-row">
-          <span className="pb-summary-k">Motivo</span>
-          <p className="pb-summary-v">{reason}</p>
-        </div>
-        {objective ? (
-          <div className="pb-summary-row">
-            <span className="pb-summary-k">Objetivo</span>
-            <p className="pb-summary-v">{objective}</p>
-          </div>
-        ) : null}
       </div>
 
       {error ? (

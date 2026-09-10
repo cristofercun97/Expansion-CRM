@@ -1,9 +1,5 @@
 import { PublicBookingSelect } from '@/features/presentation/components/booking/PublicBookingSelect'
-import {
-  SESSION_OBJECTIVE_OPTIONS,
-  SESSION_REASON_OPTIONS,
-  type PublicBookingLeadInput,
-} from '@/features/presentation/services/publicBooking.service'
+import type { PublicBookingLeadInput } from '@/features/presentation/services/publicBooking.service'
 import {
   WHATSAPP_DIAL_CODES,
   type FieldErrors,
@@ -34,14 +30,6 @@ export function PublicBookingDetailsStep({
   const dialOptions = WHATSAPP_DIAL_CODES.map((item) => ({
     value: item.code,
     label: item.label,
-  }))
-  const reasonOptions = SESSION_REASON_OPTIONS.map((option) => ({
-    value: option,
-    label: option,
-  }))
-  const objectiveOptions = SESSION_OBJECTIVE_OPTIONS.map((option) => ({
-    value: option,
-    label: option,
   }))
 
   return (
@@ -146,36 +134,6 @@ export function PublicBookingDetailsStep({
               onChange={(e) => onLocalWhatsAppChange(e.target.value)}
             />
           </div>
-        </div>
-
-        <div className="pb-field">
-          <label className="pb-label" htmlFor="pb-reason">
-            Motivo de la sesión *
-          </label>
-          <PublicBookingSelect
-            id="pb-reason"
-            label="Motivo de la sesión"
-            value={lead.sessionReason}
-            options={reasonOptions}
-            aria-invalid={Boolean(fieldErrors.sessionReason)}
-            onChange={(value) => onLeadChange({ sessionReason: value })}
-          />
-          {fieldErrors.sessionReason ? <p className="pb-error">{fieldErrors.sessionReason}</p> : null}
-        </div>
-
-        <div className="pb-field">
-          <label className="pb-label" htmlFor="pb-objective">
-            Objetivo *
-          </label>
-          <PublicBookingSelect
-            id="pb-objective"
-            label="Objetivo"
-            value={lead.objective}
-            options={objectiveOptions}
-            aria-invalid={Boolean(fieldErrors.objective)}
-            onChange={(value) => onLeadChange({ objective: value })}
-          />
-          {fieldErrors.objective ? <p className="pb-error">{fieldErrors.objective}</p> : null}
         </div>
 
         <div className="pb-field pb-span-2">

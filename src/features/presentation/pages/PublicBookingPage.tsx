@@ -342,8 +342,6 @@ export function PublicBookingPage() {
               time={selectedTime}
               durationMinutes={durationMinutes}
               participantName={`${lead.firstName.trim()} ${lead.lastName.trim()}`.trim()}
-              reason={lead.sessionReason}
-              objective={lead.objective}
               submitting={submitting}
               error={submitError || undefined}
               onBack={() => {

@@ -111,8 +111,11 @@ const stepper = read('src/features/presentation/components/booking/PublicBooking
   assert.ok(confirm.includes('Hora'))
   assert.ok(confirm.includes('Duración'))
   assert.ok(confirm.includes('Participante'))
-  assert.ok(confirm.includes('Motivo'))
+  assert.ok(!confirm.includes('Motivo'))
+  assert.ok(!confirm.includes('Objetivo'))
   assert.ok(confirm.includes('Confirmar cita'))
+  assert.ok(!details.includes('Motivo de la sesión'))
+  assert.ok(!details.includes('pb-objective'))
   assert.ok(formatLongDate('2026-09-18').toLowerCase().includes('septiembre'))
   pass('UI-07')
 }

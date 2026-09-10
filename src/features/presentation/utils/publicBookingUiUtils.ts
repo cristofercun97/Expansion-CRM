@@ -58,8 +58,6 @@ export function validateBookingDetails(lead: LeadLike): FieldErrors {
   }
   if (!lead.country.trim()) errors.country = 'El país es obligatorio.'
   if (!lead.city.trim()) errors.city = 'La ciudad es obligatoria.'
-  if (!lead.sessionReason) errors.sessionReason = 'Selecciona un motivo.'
-  if (!lead.objective) errors.objective = 'Selecciona un objetivo.'
   if (!lead.message.trim()) errors.message = 'El mensaje es obligatorio.'
   else if (lead.message.trim().length > 500) errors.message = 'Máximo 500 caracteres.'
   if (!lead.privacyAccepted) {
