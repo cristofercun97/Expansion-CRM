@@ -61,9 +61,11 @@ export const defaultPresentationFormState: PresentationFormState = {
   problem: { ...emptyTextSection },
   promise: { ...emptyTextSection },
   leadMagnet: {
-    title: '',
-    description: '',
-    ctaText: 'Descargar guía',
+    title: 'Aclara tus dudas en una sesión gratuita de 30 minutos',
+    description:
+      'Cuéntame en qué punto estás, qué te está frenando o qué necesitas resolver. Tendremos 30 minutos para escucharte, aclarar tus dudas y ayudarte a identificar cuál puede ser tu próximo paso.',
+    ctaText: 'Reservar mi encuentro gratuito',
+    /** Legacy optional URL — ignored by the free-session booking flow. */
     resourceUrl: '',
   },
   story: { ...emptyTextSection },
@@ -113,10 +115,21 @@ export const defaultPresentationFormState: PresentationFormState = {
     enabled: false,
     durationMinutes: 30,
     timezone: 'Europe/Madrid',
-    title: 'Conversemos 30 minutos sobre tu próximo paso',
-    description: '',
+    title: 'Aclara tus dudas en una sesión gratuita de 30 minutos',
+    description: 'Los encuentros son limitados y dependen de la disponibilidad de agenda.',
     googleMeet: false,
   },
+}
+
+/** Support / availability copy for the public free-session block. */
+export const PRESENTATION_FREE_SESSION_AVAILABILITY_COPY =
+  'Los encuentros son limitados y dependen de la disponibilidad de agenda.'
+
+export const PRESENTATION_FREE_SESSION_CTA_DEFAULT = 'Reservar mi encuentro gratuito'
+
+export function formatFreeSessionDurationLabel(durationMinutes: number): string {
+  const minutes = Number(durationMinutes) > 0 ? Math.floor(Number(durationMinutes)) : 30
+  return `${minutes} minutos · Sin compromiso`
 }
 
 /** Campos del formulario público — vista previa visual. */

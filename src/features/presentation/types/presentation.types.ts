@@ -46,6 +46,7 @@ export type PresentationLeadMagnet = {
   title: string
   description: string
   ctaText: string
+  /** Legacy download URL — kept for stored docs; ignored by free-session CTA. */
   resourceUrl: string
 }
 

@@ -157,6 +157,7 @@ function read(rel: string) {
   })
   assert.equal(enabled.mode, 'booking')
   assert.equal(enabled.href, '/reservar/demo-leader')
+  assert.equal(enabled.hideCta, false)
   pass('CTA-01')
 
   const disabledResource = resolvePresentationBookingCta({
@@ -164,16 +165,17 @@ function read(rel: string) {
     landingSlug: 'demo-leader',
     resourceUrl: 'https://example.com/guide',
   })
-  assert.equal(disabledResource.mode, 'resource')
-  assert.equal(disabledResource.href, 'https://example.com/guide')
+  assert.equal(disabledResource.mode, 'hidden')
+  assert.equal(disabledResource.hideCta, true)
+  assert.equal(disabledResource.href, undefined)
 
   const disabledForm = resolvePresentationBookingCta({
     bookingEnabled: false,
     landingSlug: 'demo-leader',
     resourceUrl: '',
   })
-  assert.equal(disabledForm.mode, 'form')
-  assert.equal(disabledForm.scrollToForm, true)
+  assert.equal(disabledForm.mode, 'hidden')
+  assert.equal(disabledForm.hideCta, true)
   pass('CTA-02')
 }
 

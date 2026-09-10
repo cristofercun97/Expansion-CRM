@@ -2,7 +2,10 @@ import { ExternalLink, Quote, User } from 'lucide-react'
 import { useEffect } from 'react'
 import {
   defaultInterestOptionsText,
+  formatFreeSessionDurationLabel,
   getPresentationFormPreviewField,
+  PRESENTATION_FREE_SESSION_AVAILABILITY_COPY,
+  PRESENTATION_FREE_SESSION_CTA_DEFAULT,
 } from '@/features/presentation/constants/presentationDefaults'
 import { PRESENTATION_EDITOR_SECTIONS } from '@/features/presentation/constants/presentationSectionGuides'
 import {
@@ -14,10 +17,14 @@ import {
   hasText,
   previewBodyClasses,
   previewHeadingClasses,
+  previewMutedClasses,
   previewSurfaceClasses,
   previewThemeStyle,
 } from '@/features/presentation/components/preview/previewUtils'
-import { PreviewSectionBadgeFromMeta } from '@/features/presentation/components/preview/PreviewSectionBadge'
+import {
+  PreviewSectionBadge,
+  PreviewSectionBadgeFromMeta,
+} from '@/features/presentation/components/preview/PreviewSectionBadge'
 import { PresentationPublicForm } from '@/features/presentation/components/preview/PresentationPublicForm'
 import { PresentationWhatsAppFloat } from '@/features/presentation/components/preview/PresentationWhatsAppFloat'
 import { PresentationPreviewFooter } from '@/features/presentation/components/preview/PresentationPreviewFooter'
@@ -336,40 +343,64 @@ export function PresentationPreviewLanding({ form, publicContext }: Presentation
 
       {hasSectionContent(form.leadMagnet.title, form.leadMagnet.description) ||
       form.booking.enabled ? (
-        <PreviewSection>
-          <PreviewHeading
-            sectionKey="leadMagnet"
-            title={
-              form.booking.enabled
-                ? form.booking.title || form.leadMagnet.title || 'Agenda un encuentro'
-                : form.leadMagnet.title || 'Recurso gratuito'
-            }
-            description={
-              form.booking.enabled
-                ? form.booking.description || form.leadMagnet.description
-                : form.leadMagnet.description
-            }
-          />
-          <div className="flex justify-center text-center">
-            {!bookingCta.hideCta ? (
-              <PreviewButton
-                href={bookingCta.href}
-                scrollToForm={bookingCta.scrollToForm}
-                className="w-full max-w-sm sm:w-auto"
-                onClick={() => {
-                  if (bookingCta.mode !== 'booking' || !publicContext?.landingSlug) return
-                  void presentationFunnelService.trackPresentationFunnelEvent({
-                    eventKind: 'presentation_booking_click',
-                    presentationSlug: publicContext.landingSlug,
-                    source: 'presentation_public',
-                    oncePerSession: true,
-                  })
-                }}
+        <PreviewSection id="encuentro-gratuito">
+          <div className="mx-auto flex max-w-2xl flex-col items-center overflow-x-hidden text-center">
+            <div className="mb-4 flex justify-center">
+              <PreviewSectionBadge
+                emoji={PRESENTATION_EDITOR_SECTIONS.leadMagnet.emoji}
+                label="ENCUENTRO GRATUITO"
+              />
+            </div>
+            <h2
+              className={cn(
+                'text-2xl font-semibold tracking-tight sm:text-3xl',
+                previewHeadingClasses(),
+              )}
+            >
+              {form.leadMagnet.title?.trim() ||
+                form.booking.title?.trim() ||
+                'Aclara tus dudas en una sesión gratuita de 30 minutos'}
+            </h2>
+            {form.leadMagnet.description?.trim() ? (
+              <p
+                className={cn(
+                  'mt-3 max-w-xl text-base leading-relaxed sm:text-lg',
+                  previewBodyClasses(),
+                )}
               >
-                {form.booking.enabled
-                  ? form.leadMagnet.ctaText?.trim() || 'Agendar mi encuentro'
-                  : form.leadMagnet.ctaText || 'Descargar guía'}
-              </PreviewButton>
+                {form.leadMagnet.description}
+              </p>
+            ) : null}
+            <p
+              className={cn(
+                'mt-5 inline-flex max-w-full items-center justify-center rounded-full border border-[var(--preview-surface-border)] bg-[var(--preview-surface-bg)] px-4 py-1.5 text-sm font-medium',
+                previewHeadingClasses(),
+              )}
+            >
+              {formatFreeSessionDurationLabel(form.booking.durationMinutes)}
+            </p>
+            <p className={cn('mt-4 max-w-md text-sm leading-relaxed', previewMutedClasses())}>
+              {form.booking.description?.trim() || PRESENTATION_FREE_SESSION_AVAILABILITY_COPY}
+            </p>
+            {!bookingCta.hideCta ? (
+              <div className="mt-7 flex w-full justify-center sm:mt-8">
+                <PreviewButton
+                  href={bookingCta.href}
+                  scrollToForm={bookingCta.scrollToForm}
+                  className="w-full max-w-sm sm:w-auto"
+                  onClick={() => {
+                    if (bookingCta.mode !== 'booking' || !publicContext?.landingSlug) return
+                    void presentationFunnelService.trackPresentationFunnelEvent({
+                      eventKind: 'presentation_booking_click',
+                      presentationSlug: publicContext.landingSlug,
+                      source: 'presentation_public',
+                      oncePerSession: true,
+                    })
+                  }}
+                >
+                  {form.leadMagnet.ctaText?.trim() || PRESENTATION_FREE_SESSION_CTA_DEFAULT}
+                </PreviewButton>
+              </div>
             ) : null}
           </div>
         </PreviewSection>

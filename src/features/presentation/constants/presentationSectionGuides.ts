@@ -35,8 +35,9 @@ export const PRESENTATION_EDITOR_SECTIONS = {
   },
   leadMagnet: {
     emoji: '🎁',
-    badge: 'Lead magnet',
-    guide: 'Ofrece un recurso gratuito (guía, clase, diagnóstico) para captar interés.',
+    badge: 'Encuentro gratuito',
+    guide:
+      'Ofrece un encuentro personal para escuchar a la persona, aclarar sus dudas y ayudarle a definir su próximo paso.',
   },
   story: {
     emoji: '📖',

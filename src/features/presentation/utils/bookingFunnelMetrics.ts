@@ -30,10 +30,15 @@ export function formatBookingConversionRate(metrics: BookingFunnelMetrics): stri
   return `${rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(1)}%`
 }
 
-/** Resolve public booking CTA href/fallback without inventing URLs. */
+/**
+ * Resolve public free-session CTA.
+ * When booking is enabled → /reservar/:slug.
+ * When disabled → hide CTA (no broken /reservar link; legacy resourceUrl ignored).
+ */
 export function resolvePresentationBookingCta(input: {
   bookingEnabled: boolean
   landingSlug?: string | null
+  /** @deprecated Kept for call-site compat; no longer used for public CTA. */
   resourceUrl?: string | null
 }): {
   href?: string
@@ -51,23 +56,19 @@ export function resolvePresentationBookingCta(input: {
         mode: 'booking',
       }
     }
-  }
-
-  const resourceUrl = input.resourceUrl?.trim()
-  if (resourceUrl) {
+    // Enabled but slug missing — never invent a broken route.
     return {
-      href: resourceUrl,
+      href: undefined,
       scrollToForm: false,
-      hideCta: false,
-      mode: 'resource',
+      hideCta: true,
+      mode: 'hidden',
     }
   }
 
-  // Safe default already used by presentation: scroll to contact form.
   return {
     href: undefined,
-    scrollToForm: true,
-    hideCta: false,
-    mode: 'form',
+    scrollToForm: false,
+    hideCta: true,
+    mode: 'hidden',
   }
 }

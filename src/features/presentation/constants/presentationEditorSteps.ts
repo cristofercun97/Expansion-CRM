@@ -49,10 +49,10 @@ export const PRESENTATION_EDITOR_STEPS: PresentationEditorStep[] = [
   },
   {
     id: 'leadStory',
-    label: 'Lead e historia',
-    shortLabel: 'Historia',
-    emoji: '📖',
-    description: 'Recurso gratuito y tu historia personal.',
+    label: 'Encuentro e historia',
+    shortLabel: 'Encuentro',
+    emoji: '🎁',
+    description: 'Encuentro gratuito y tu historia personal.',
   },
   {
     id: 'method',

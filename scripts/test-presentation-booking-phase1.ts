@@ -205,8 +205,12 @@ const baseConfig = mapBookingConfig({
     path.join(root, 'src/features/presentation/components/preview/PresentationPreviewLanding.tsx'),
     'utf8',
   )
-  assert.ok(landing.includes('Agendar mi encuentro'))
+  assert.ok(
+    landing.includes('PRESENTATION_FREE_SESSION_CTA_DEFAULT') ||
+      landing.includes('Reservar mi encuentro gratuito'),
+  )
   assert.ok(landing.includes('resolvePresentationBookingCta'))
+  assert.ok(landing.includes('ENCUENTRO GRATUITO'))
   const ctaUtil = fs.readFileSync(
     path.join(root, 'src/features/presentation/utils/bookingFunnelMetrics.ts'),
     'utf8',

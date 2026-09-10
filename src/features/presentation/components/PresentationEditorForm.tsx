@@ -15,7 +15,7 @@ import { PRESENTATION_FIELD_LIMITS } from '@/features/presentation/constants/pre
 import { PresentationImageUrlField } from '@/features/presentation/components/PresentationImageUrlField'
 import { PresentationSectionCard } from '@/features/presentation/components/PresentationSectionCard'
 import { PresentationWizardProgress } from '@/features/presentation/components/PresentationWizardProgress'
-import { presentationFormPreviewFields } from '@/features/presentation/constants/presentationDefaults'
+import { presentationFormPreviewFields, PRESENTATION_FREE_SESSION_CTA_DEFAULT } from '@/features/presentation/constants/presentationDefaults'
 import {
   PRESENTATION_EDITOR_STEP_COUNT,
   PRESENTATION_EDITOR_STEPS,
@@ -539,87 +539,131 @@ export function PresentationEditorForm({
       {currentStepId === 'leadStory' ? (
         <>
       <PresentationSectionCard
-        title="Lead magnet"
-        description="Guía, diagnóstico o clase gratuita."
+        title="Encuentro gratuito de 30 minutos"
+        description="Convierte visitantes en citas en tu Agenda."
         emoji={PRESENTATION_EDITOR_SECTIONS.leadMagnet.emoji}
         badge={PRESENTATION_EDITOR_SECTIONS.leadMagnet.badge}
         guide={PRESENTATION_EDITOR_SECTIONS.leadMagnet.guide}
       >
         <div className="space-y-5">
+          <p className="rounded-xl border border-[#d7ebe8] bg-[#f8fcfb] px-3 py-2.5 text-xs text-[#5b6b69] sm:text-sm">
+            Las reservas se conectan automáticamente con tu Agenda de EXPANSIÓN.
+          </p>
           <PresentationTitleInput
             label="Título"
             value={form.leadMagnet.title}
-            onChange={(event) => updateSectionField(setForm, 'leadMagnet', 'title', event.target.value)}
+            onChange={(event) => {
+              const title = event.target.value
+              setForm((current) => ({
+                ...current,
+                leadMagnet: { ...current.leadMagnet, title },
+                booking: { ...current.booking, title },
+              }))
+            }}
           />
           <PresentationDescriptionTextarea
             label="Descripción"
-            rows={3}
+            rows={4}
             value={form.leadMagnet.description}
             onChange={(event) =>
               updateSectionField(setForm, 'leadMagnet', 'description', event.target.value)
             }
           />
-          <div className="grid gap-5 sm:grid-cols-2">
-            <PresentationCtaInput
-              label="Texto del botón"
-              value={form.leadMagnet.ctaText}
-              onChange={(event) =>
-                updateSectionField(setForm, 'leadMagnet', 'ctaText', event.target.value)
-              }
-            />
-            <PresentationUrlInput
-              label="URL del recurso (opcional)"
-              type="url"
-              placeholder="https://... o déjalo vacío para ir al formulario"
-              value={form.leadMagnet.resourceUrl}
-              onChange={(event) =>
-                updateSectionField(setForm, 'leadMagnet', 'resourceUrl', event.target.value)
-              }
-            />
-          </div>
+          <PresentationCtaInput
+            label="Texto del botón"
+            value={form.leadMagnet.ctaText}
+            onChange={(event) =>
+              updateSectionField(setForm, 'leadMagnet', 'ctaText', event.target.value)
+            }
+          />
+          <PresentationDescriptionTextarea
+            label="Texto de disponibilidad"
+            rows={2}
+            value={form.booking.description}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                booking: { ...current.booking, description: event.target.value },
+              }))
+            }
+          />
           <div className="rounded-2xl border border-[#d7ebe8] bg-[#f3fbfa] p-4 space-y-4">
-            <label className="flex items-center gap-2 text-sm font-semibold text-[#0f3d3a]">
-              <input
-                type="checkbox"
-                checked={form.booking.enabled}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    booking: { ...current.booking, enabled: event.target.checked },
-                    leadMagnet: {
-                      ...current.leadMagnet,
-                      ctaText: event.target.checked
-                        ? current.leadMagnet.ctaText || 'Agendar mi encuentro'
-                        : current.leadMagnet.ctaText,
-                    },
-                  }))
-                }
-              />
-              Activar reserva pública (Agenda)
-            </label>
+            <div className="space-y-1.5">
+              <label className="flex items-start gap-2 text-sm font-semibold text-[#0f3d3a]">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={form.booking.enabled}
+                  onChange={(event) => {
+                    const enabled = event.target.checked
+                    setForm((current) => ({
+                      ...current,
+                      booking: {
+                        ...current.booking,
+                        enabled,
+                        title: current.booking.title || current.leadMagnet.title,
+                        description:
+                          current.booking.description ||
+                          'Los encuentros son limitados y dependen de la disponibilidad de agenda.',
+                      },
+                      leadMagnet: {
+                        ...current.leadMagnet,
+                        ctaText: enabled
+                          ? current.leadMagnet.ctaText?.trim() || PRESENTATION_FREE_SESSION_CTA_DEFAULT
+                          : current.leadMagnet.ctaText,
+                      },
+                    }))
+                  }}
+                />
+                <span>
+                  Activar encuentro gratuito
+                  <span className="mt-0.5 block text-xs font-normal text-[#5b6b69]">
+                    Permite que las personas reserven directamente uno de tus horarios disponibles.
+                  </span>
+                </span>
+              </label>
+              <p className="pl-6 text-xs text-[#5b6b69]">
+                Al activarlo, tus visitantes podrán elegir una fecha y hora disponible. La cita
+                aparecerá automáticamente en tu Agenda.
+              </p>
+            </div>
             {form.booking.enabled ? (
               <>
-                <PresentationTitleInput
-                  label="Título de la reserva"
-                  value={form.booking.title}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      booking: { ...current.booking, title: event.target.value },
-                    }))
-                  }
-                />
-                <PresentationDescriptionTextarea
-                  label="Descripción pública"
-                  rows={2}
-                  value={form.booking.description}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      booking: { ...current.booking, description: event.target.value },
-                    }))
-                  }
-                />
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="block space-y-1.5 text-sm text-[#0f3d3a]">
+                    <span className="font-medium">Duración</span>
+                    <select
+                      className="w-full rounded-xl border border-[#c5e0db] bg-white px-3 py-2 text-sm"
+                      value={form.booking.durationMinutes}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          booking: {
+                            ...current.booking,
+                            durationMinutes: Number(event.target.value) || 30,
+                          },
+                        }))
+                      }
+                    >
+                      <option value={30}>30 minutos</option>
+                      <option value={45}>45 minutos</option>
+                      <option value={60}>60 minutos</option>
+                    </select>
+                  </label>
+                  <label className="block space-y-1.5 text-sm text-[#0f3d3a]">
+                    <span className="font-medium">Zona horaria</span>
+                    <Input
+                      value={form.booking.timezone}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          booking: { ...current.booking, timezone: event.target.value },
+                        }))
+                      }
+                      placeholder="Europe/Madrid"
+                    />
+                  </label>
+                </div>
                 <label className="flex items-center gap-2 text-sm text-[#0f3d3a]">
                   <input
                     type="checkbox"
@@ -634,8 +678,7 @@ export function PresentationEditorForm({
                   Intentar Google Meet (si Calendar está conectado)
                 </label>
                 <p className="text-xs text-[#5b6b69]">
-                  Duración Fase 1: 30 minutos. Zona horaria: {form.booking.timezone}. El botón del
-                  recurso gratuito enlazará a /reservar/{'{slug}'}.
+                  El botón enlazará a /reservar/{'{slug}'} usando tu disponibilidad real de Agenda.
                 </p>
                 {bookingFunnel ? (
                   <div
