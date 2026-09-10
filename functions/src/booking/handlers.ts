@@ -106,6 +106,7 @@ async function resolvePublishedPresentation(slug: string): Promise<{
     landing as Record<string, unknown>,
     ownerFields,
   );
+  // brandName here is a display fallback for calendar/organizer labels — prefer person name.
   const brandName = professional.displayName;
 
   return {ownerUid, slug, brandName, booking, professional};

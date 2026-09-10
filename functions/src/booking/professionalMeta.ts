@@ -13,7 +13,10 @@ export type PublicBookingProfessional = {
 }
 
 export type OwnerPublicProfileFields = {
+  /** users/{uid}.displayName */
   displayName?: string
+  /** users/{uid}.profile.fullName or equivalent */
+  fullName?: string
   photoURL?: string
   profilePhotoURL?: string
 }
@@ -28,6 +31,25 @@ function httpsUrl(value: string): string | null {
 }
 
 /**
+ * Optional personal public name stored on the Marca Personal landing.
+ * Does not invent fields — only reads known optional keys if present.
+ * Never uses brandName (that is the brand, not the person).
+ */
+function landingPersonalPublicName(landing: Record<string, unknown>): string {
+  const visual =
+    landing.visualIdentity && typeof landing.visualIdentity === 'object'
+      ? (landing.visualIdentity as Record<string, unknown>)
+      : {}
+  return (
+    clean(landing.ownerPublicName, 120) ||
+    clean(landing.publicName, 120) ||
+    clean(visual.ownerPublicName, 120) ||
+    clean(visual.publicName, 120) ||
+    ''
+  )
+}
+
+/**
  * Build public-safe professional card fields from a validated landing document
  * plus optional owner profile fields (users/{uid}).
  *
@@ -36,10 +58,13 @@ function httpsUrl(value: string): string | null {
  * 2. Owner photoURL / avatarUrl
  * 3. Marca Personal visualIdentity.photoUrl (personal photo, never logoUrl)
  *
- * Display name priority:
- * 1. Marca Personal brandName
- * 2. Owner displayName / profile.fullName
- * 3. "Profesional"
+ * Display name (PERSON) priority:
+ * 1. Personal public name on Marca Personal landing (if present)
+ * 2. users/{ownerUid}.displayName
+ * 3. users/{ownerUid}.fullName / profile.fullName
+ * 4. "Profesional"
+ *
+ * brandName is ALWAYS the configured brand — never used as displayName.
  */
 export function buildPublicBookingProfessional(
   landing: Record<string, unknown>,
@@ -60,8 +85,12 @@ export function buildPublicBookingProfessional(
 
   const brandName =
     clean(visual.brandName, 120) || clean(landing.brandName, 120) || null
-  const ownerDisplayName = clean(owner?.displayName, 120)
-  const displayName = brandName || ownerDisplayName || 'Profesional'
+
+  const displayName =
+    landingPersonalPublicName(landing) ||
+    clean(owner?.displayName, 120) ||
+    clean(owner?.fullName, 120) ||
+    'Profesional'
 
   const ownerConfiguredPhoto = httpsUrl(clean(owner?.profilePhotoURL, 500))
   const ownerAvatar = httpsUrl(clean(owner?.photoURL, 500))
@@ -99,14 +128,16 @@ export function extractOwnerPublicProfileFields(
       ? (userData.profile as Record<string, unknown>)
       : {}
 
-  const displayName =
-    clean(profile.fullName, 120) || clean(userData.displayName, 120) || ''
+  const displayName = clean(userData.displayName, 120)
+  const fullName =
+    clean(profile.fullName, 120) || clean(userData.fullName, 120) || ''
   const profilePhotoURL = clean(profile.photoURL, 500)
   const photoURL =
     clean(userData.photoURL, 500) || clean(userData.avatarUrl, 500) || ''
 
   return {
     ...(displayName ? {displayName} : {}),
+    ...(fullName ? {fullName} : {}),
     ...(photoURL ? {photoURL} : {}),
     ...(profilePhotoURL ? {profilePhotoURL} : {}),
   }

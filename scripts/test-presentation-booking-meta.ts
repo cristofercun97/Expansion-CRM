@@ -37,12 +37,26 @@ function read(rel: string) {
     ownerUid: 'uid_secret',
   })
 
-  assert.equal(professional.displayName, 'Estudio Norte')
+  assert.equal(professional.displayName, 'Profesional')
   assert.equal(professional.avatarUrl, 'https://cdn.example.com/a.jpg')
   assert.equal(professional.brandName, 'Estudio Norte')
   assert.equal(professional.headline, 'Sesión de claridad')
   assert.equal(professional.claim, 'Sesión de claridad')
   assertPublicProfessionalSafe({ professional })
+
+  const withOwner = buildPublicBookingProfessional(
+    {
+      visualIdentity: {
+        brandName: 'Estudio Norte',
+        photoUrl: 'https://cdn.example.com/a.jpg',
+      },
+      booking: { description: 'Sesión de claridad' },
+    },
+    { displayName: 'Ana Owner' },
+  )
+  assert.equal(withOwner.displayName, 'Ana Owner')
+  assert.equal(withOwner.brandName, 'Estudio Norte')
+  assertPublicProfessionalSafe({ professional: withOwner })
 
   const handlers = read('functions/src/booking/handlers.ts')
   assert.ok(handlers.includes('professional: presentation.professional'))
@@ -61,7 +75,9 @@ function read(rel: string) {
     notes: 'privado',
     meetingUrl: 'https://meet.google.com/x',
     ownerUid: 'abc',
-  })
+  }, { displayName: 'Ana López' })
+  assert.equal(professional.displayName, 'Ana López')
+  assert.equal(professional.brandName, 'Ana')
   const payload = {
     professional,
     timezone: 'Europe/Madrid',

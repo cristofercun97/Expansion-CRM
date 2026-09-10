@@ -36,7 +36,7 @@ function read(rel: string) {
     },
   )
   assert.equal(professional.avatarUrl, 'https://cdn.example.com/owner-profile.jpg')
-  assert.equal(professional.displayName, 'Marca Norte')
+  assert.equal(professional.displayName, 'Cristofer Cunto')
   assert.equal(professional.brandName, 'Marca Norte')
   assert.equal(professional.headline, 'Sesión de claridad')
   pass('PROFILE-01')
@@ -58,7 +58,8 @@ function read(rel: string) {
     {visualIdentity: {brandName: 'Studio CX'}},
     {displayName: 'Cristofer'},
   )
-  assert.equal(withBrand.displayName, 'Studio CX')
+  assert.equal(withBrand.displayName, 'Cristofer')
+  assert.equal(withBrand.brandName, 'Studio CX')
   assert.notEqual(withBrand.displayName, 'Profesional')
 
   const ownerOnly = buildPublicBookingProfessional({}, {displayName: 'Cristofer Cunto'})
@@ -99,7 +100,8 @@ function read(rel: string) {
     profile: {fullName: 'Cristofer Cunto', photoURL: 'https://cdn.example.com/p.jpg'},
     roles: ['admin'],
   })
-  assert.equal(owner.displayName, 'Cristofer Cunto')
+  assert.equal(owner.displayName, 'Cristofer')
+  assert.equal(owner.fullName, 'Cristofer Cunto')
   assert.equal(owner.profilePhotoURL, 'https://cdn.example.com/p.jpg')
   assert.ok(!('email' in owner))
   assert.ok(!('phone' in owner))
@@ -114,6 +116,8 @@ function read(rel: string) {
     },
     owner,
   )
+  assert.equal(professional.displayName, 'Cristofer')
+  assert.equal(professional.brandName, 'CX')
   const payload = {professional, dates: {}}
   assertPublicProfessionalSafe(payload)
   const text = JSON.stringify(payload)
@@ -153,6 +157,57 @@ function read(rel: string) {
   })
   assert.equal(fromLanding.avatarUrl, 'https://cdn.example.com/landing-person.jpg')
   pass('PROFILE-EXTRA-landing-photo-not-logo')
+}
+
+// PROFILE-NAME-01 — owner name + brandName → person vs brand
+{
+  const professional = buildPublicBookingProfessional(
+    {visualIdentity: {brandName: 'XTRA TEAM'}},
+    {displayName: 'Cristofer Cunto'},
+  )
+  assert.equal(professional.displayName, 'Cristofer Cunto')
+  assert.equal(professional.brandName, 'XTRA TEAM')
+  pass('PROFILE-NAME-01')
+}
+
+// PROFILE-NAME-02 — sin brandName → nombre persona correcto
+{
+  const professional = buildPublicBookingProfessional(
+    {visualIdentity: {}},
+    {displayName: 'Cristofer Cunto'},
+  )
+  assert.equal(professional.displayName, 'Cristofer Cunto')
+  assert.equal(professional.brandName, null)
+  pass('PROFILE-NAME-02')
+}
+
+// PROFILE-NAME-03 — sin nombre persona → “Profesional”
+{
+  const professional = buildPublicBookingProfessional(
+    {visualIdentity: {brandName: 'XTRA TEAM'}},
+  )
+  assert.equal(professional.displayName, 'Profesional')
+  assert.equal(professional.brandName, 'XTRA TEAM')
+  pass('PROFILE-NAME-03')
+}
+
+// PROFILE-NAME-04 — brandName nunca sustituye al nombre personal si este existe
+{
+  const professional = buildPublicBookingProfessional(
+    {visualIdentity: {brandName: 'XTRA TEAM'}},
+    {displayName: 'Cristofer Cunto', fullName: 'Otro'},
+  )
+  assert.equal(professional.displayName, 'Cristofer Cunto')
+  assert.notEqual(professional.displayName, professional.brandName)
+  assert.equal(professional.brandName, 'XTRA TEAM')
+
+  const fullNameOnly = buildPublicBookingProfessional(
+    {visualIdentity: {brandName: 'Marca'}},
+    {fullName: 'Ana Pérez'},
+  )
+  assert.equal(fullNameOnly.displayName, 'Ana Pérez')
+  assert.equal(fullNameOnly.brandName, 'Marca')
+  pass('PROFILE-NAME-04')
 }
 
 console.log('PRESENTACIÓN ↔ AGENDA — booking owner profile tests: ALL PASS')
