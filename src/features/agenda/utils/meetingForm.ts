@@ -104,9 +104,18 @@ export function buildMeetingFormValues(options: {
   meeting?: Meeting | null
   contacts: Contact[]
   preselectedContactId?: string
+  /** Local calendar day to prefill create form date (`YYYY-MM-DD`). Time keeps default. */
+  initialDate?: Date | null
   preferGoogleMeetDefault: boolean
 }): MeetingFormValues {
-  const { mode, meeting, contacts, preselectedContactId, preferGoogleMeetDefault } = options
+  const {
+    mode,
+    meeting,
+    contacts,
+    preselectedContactId,
+    initialDate,
+    preferGoogleMeetDefault,
+  } = options
 
   if (mode === 'edit' && meeting) {
     return createEmptyMeetingFormValues(formFromMeeting(meeting))
@@ -129,6 +138,7 @@ export function buildMeetingFormValues(options: {
     title: contact ? `Seguimiento con ${contact.name}` : '',
     meetingMode: 'video',
     videoLinkMethod: preferGoogleMeetDefault ? 'google_meet' : 'manual',
+    ...(initialDate ? { date: toDateInputValue(initialDate) } : {}),
   })
 }
 

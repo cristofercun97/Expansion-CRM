@@ -79,6 +79,7 @@ export function AgendaPage() {
   const [resultMeeting, setResultMeeting] = useState<Meeting | null>(null)
   const [nextActionMeeting, setNextActionMeeting] = useState<Meeting | null>(null)
   const [preselectedContactId, setPreselectedContactId] = useState<string | undefined>()
+  const [preselectedDate, setPreselectedDate] = useState<Date | null>(null)
   const [scheduleSession, setScheduleSession] = useState(0)
   const [consumedScheduleQuery, setConsumedScheduleQuery] = useState('')
   const [consumedMeetingDeepLink, setConsumedMeetingDeepLink] = useState('')
@@ -146,6 +147,7 @@ export function AgendaPage() {
   if (scheduleQueryKey && scheduleQueryKey !== consumedScheduleQuery) {
     setConsumedScheduleQuery(scheduleQueryKey)
     setPreselectedContactId(scheduleQueryContactId)
+    setPreselectedDate(null)
     setScheduleMode('create')
     setEditingMeeting(null)
     setScheduleSession((value) => value + 1)
@@ -353,6 +355,16 @@ export function AgendaPage() {
     setScheduleMode('create')
     setEditingMeeting(null)
     setPreselectedContactId(undefined)
+    setPreselectedDate(null)
+    setScheduleSession((value) => value + 1)
+    setScheduleOpen(true)
+  }
+
+  function openCreateForDay(day: Date) {
+    setScheduleMode('create')
+    setEditingMeeting(null)
+    setPreselectedContactId(undefined)
+    setPreselectedDate(startOfDay(day))
     setScheduleSession((value) => value + 1)
     setScheduleOpen(true)
   }
@@ -707,7 +719,7 @@ export function AgendaPage() {
               meetings={detailMeetingsSorted}
               onOpenMeeting={setSelectedMeeting}
               onClose={() => setDayPanelOpen(false)}
-              onCreateForDay={openCreate}
+              onCreateForDay={() => openCreateForDay(detailDay)}
             />
           )
         ) : null}
@@ -735,7 +747,7 @@ export function AgendaPage() {
             meetings={detailMeetingsSorted}
             onOpenMeeting={setSelectedMeeting}
             onClose={() => setDayPanelOpen(false)}
-            onCreateForDay={openCreate}
+            onCreateForDay={() => openCreateForDay(detailDay)}
           />
         )
       ) : null}
@@ -748,7 +760,7 @@ export function AgendaPage() {
 
       {scheduleOpen ? (
         <ScheduleMeetingModal
-          key={`schedule-${scheduleSession}-${scheduleMode}-${editingMeeting?.id ?? 'new'}`}
+          key={`schedule-${scheduleSession}-${scheduleMode}-${editingMeeting?.id ?? 'new'}-${preselectedDate?.toISOString() ?? 'default'}`}
           open={scheduleOpen}
           mode={scheduleMode}
           organizerId={organizerId}
@@ -757,6 +769,7 @@ export function AgendaPage() {
           googleStatus={googleStatus}
           meeting={editingMeeting}
           preselectedContactId={preselectedContactId}
+          initialDate={preselectedDate}
           onClose={() => setScheduleOpen(false)}
           onSaved={handleSaved}
         />
@@ -770,6 +783,7 @@ export function AgendaPage() {
         onEdit={(meeting) => {
           setSelectedMeeting(null)
           setEditingMeeting(meeting)
+          setPreselectedDate(null)
           setScheduleMode('edit')
           setScheduleSession((value) => value + 1)
           setScheduleOpen(true)

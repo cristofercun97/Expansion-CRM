@@ -56,6 +56,8 @@ type ScheduleMeetingModalProps = {
   googleStatus: GoogleCalendarConnectionStatus
   meeting?: Meeting | null
   preselectedContactId?: string
+  /** Prefills create-mode date from the selected agenda day (local timezone). */
+  initialDate?: Date | null
   onClose: () => void
   onSaved: (meeting: Meeting) => void
 }
@@ -69,6 +71,7 @@ export function ScheduleMeetingModal({
   googleStatus,
   meeting,
   preselectedContactId,
+  initialDate = null,
   onClose,
   onSaved,
 }: ScheduleMeetingModalProps) {
@@ -78,6 +81,7 @@ export function ScheduleMeetingModal({
       meeting,
       contacts,
       preselectedContactId,
+      initialDate,
       preferGoogleMeetDefault: googleStatus.connected,
     }),
   )
