@@ -33,6 +33,7 @@
     "test:presentation-booking-profile": "tsx scripts/test-presentation-booking-profile.ts",
     "test:agenda-booking-notifications": "tsx scripts/test-agenda-booking-notifications.ts",
     "test:agenda-booking-alert": "tsx scripts/test-agenda-booking-alert.ts",
+    "test:agenda-booking-v1": "tsx scripts/test-agenda-booking-v1.ts",
     "test:booking-confirmation-email": "tsx scripts/test-booking-confirmation-email.ts"
   },
   "dependencies": {

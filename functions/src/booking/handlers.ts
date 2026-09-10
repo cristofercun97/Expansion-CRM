@@ -35,11 +35,6 @@ import {
   type PublicBookingProfessional,
 } from "./professionalMeta.js";
 import {
-  ensureBookingConfirmationEmail,
-  emailFromAddress,
-  resendApiKey,
-} from "../email/bookingConfirmationEmail.js";
-import {
   isRateLimitExceeded,
   rateLimitDocId,
   type BookingRateKind,
@@ -49,28 +44,6 @@ const googleOAuthClientId = defineSecret("GOOGLE_OAUTH_CLIENT_ID");
 const googleOAuthClientSecret = defineSecret("GOOGLE_OAUTH_CLIENT_SECRET");
 const googleOAuthRedirectUri = defineSecret("GOOGLE_OAUTH_REDIRECT_URI");
 const appBaseUrl = defineSecret("APP_BASE_URL");
-
-async function queueBookingConfirmationEmailSafe(input: {
-  bookingId: string;
-  recipientEmail: string;
-  firstName: string;
-  professionalName: string;
-  brandName: string | null;
-  dateKey: string;
-  timeLabel: string;
-  durationMinutes: number;
-  timezone: string;
-}): Promise<void> {
-  try {
-    await ensureBookingConfirmationEmail(input);
-  } catch (error) {
-    console.info("[booking-email]", {
-      bookingId: input.bookingId,
-      status: "unexpected_error",
-      reason: error instanceof Error ? error.message.slice(0, 80) : "unknown",
-    });
-  }
-}
 
 function asHttpsError(error: unknown): never {
   if (error instanceof HttpsError) throw error;
@@ -356,8 +329,6 @@ export const createPublicBooking = onCall(
       googleOAuthClientSecret,
       googleOAuthRedirectUri,
       appBaseUrl,
-      resendApiKey,
-      emailFromAddress,
     ],
   },
   async (request) => {
@@ -409,17 +380,6 @@ export const createPublicBooking = onCall(
             dateLabel: String(prior.date || input.selectedDate),
             timeLabel: String(prior.time || input.selectedTime),
             durationMinutes: booking.durationMinutes,
-          });
-          await queueBookingConfirmationEmailSafe({
-            bookingId: priorBookingId,
-            recipientEmail: input.lead.email,
-            firstName: input.lead.firstName,
-            professionalName: professional.displayName,
-            brandName: professional.brandName,
-            dateKey: String(prior.date || input.selectedDate),
-            timeLabel: String(prior.time || input.selectedTime),
-            durationMinutes: booking.durationMinutes,
-            timezone: booking.timezone,
           });
         }
         return {
@@ -566,18 +526,6 @@ export const createPublicBooking = onCall(
         dateLabel: input.selectedDate,
         timeLabel: input.selectedTime,
         durationMinutes: booking.durationMinutes,
-      });
-
-      await queueBookingConfirmationEmailSafe({
-        bookingId,
-        recipientEmail: input.lead.email,
-        firstName: input.lead.firstName,
-        professionalName: professional.displayName,
-        brandName: professional.brandName,
-        dateKey: input.selectedDate,
-        timeLabel: input.selectedTime,
-        durationMinutes: booking.durationMinutes,
-        timezone: booking.timezone,
       });
 
       let googleMeetAvailable = false;
