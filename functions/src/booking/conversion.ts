@@ -243,15 +243,12 @@ export async function ensurePublicBookingConversionEffects(input: {
       bookingDuration: input.durationMinutes,
       createdAt: FieldValue.serverTimestamp(),
     });
-    tx.set(
-      landingRef,
-      {
-        "bookingFunnel.bookings": FieldValue.increment(1),
-        "bookingFunnel.updatedAt": FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      {merge: true},
-    );
+    // Use update() so dotted paths nest under bookingFunnel (set+merge stores literal keys).
+    tx.update(landingRef, {
+      "bookingFunnel.bookings": FieldValue.increment(1),
+      "bookingFunnel.updatedAt": FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
     metricsState.value = "incremented";
   });
 
@@ -331,17 +328,15 @@ export async function recordPresentationFunnelEvent(input: {
   }
 
   if (counterField) {
+    // Use update() so dotted paths nest under bookingFunnel (set+merge stores literal keys).
     await db
       .collection(COLLECTIONS.leaderLandingPages)
       .doc(input.ownerUid)
-      .set(
-        {
-          [`bookingFunnel.${counterField}`]: FieldValue.increment(1),
-          'bookingFunnel.updatedAt': FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        {merge: true},
-      );
+      .update({
+        [`bookingFunnel.${counterField}`]: FieldValue.increment(1),
+        "bookingFunnel.updatedAt": FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
   }
 
   return {recorded: true, duplicate: false};

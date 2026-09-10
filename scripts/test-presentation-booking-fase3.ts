@@ -118,6 +118,16 @@ function read(rel: string) {
   assert.equal(funnelCounterField('presentation_booking_click'), 'bookingClicks')
   assert.equal(funnelCounterField('booking_completed'), 'bookings')
   assert.equal(funnelCounterField('booking_started'), null)
+
+  // Nested metrics must use update() — set({merge}) with dotted keys creates literal field names.
+  const conversion = read('functions/src/booking/conversion.ts')
+  assert.match(conversion, /\.update\(\{[\s\S]*bookingFunnel\.\$\{counterField\}/)
+  assert.match(conversion, /tx\.update\(landingRef/)
+  assert.doesNotMatch(
+    conversion,
+    /\.set\(\s*\{[\s\S]*bookingFunnel\.\$\{counterField\}[\s\S]*\}\s*,\s*\{merge:\s*true\}/,
+  )
+  pass('METRIC-05')
 }
 
 // SEC-01 — owner metrics from own landing page mapping

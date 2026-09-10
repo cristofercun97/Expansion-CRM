@@ -92,6 +92,15 @@ async function seed(testEnv: RulesTestEnvironment) {
     await db.doc('bookingRateLimits/ip_x_2026-09-10').set({
       count: 1,
     })
+
+    await db.doc('presentationFunnelEvents/booking_completed_m1').set({
+      eventKind: 'booking_completed',
+      presentationSlug: 'demo',
+      ownerUid: OWNER,
+      bookingId: 'm1',
+      source: 'presentation_booking',
+      createdAt: new Date('2026-09-01T10:00:00.000Z'),
+    })
   })
 }
 
@@ -150,6 +159,19 @@ async function main() {
     await assertDeniedCrud(stranger, 'bookingRateLimits/ip_x_2026-09-10', ratePayload)
     await assertDeniedCrud(admin, 'bookingRateLimits/ip_x_2026-09-10', ratePayload)
     console.log('PASS bookingRateLimits DENY CRUD')
+
+    // presentationFunnelEvents — backend-only (Fase 3)
+    const funnelPayload = {
+      eventKind: 'presentation_view',
+      presentationSlug: 'demo',
+      ownerUid: OWNER,
+      source: 'presentation',
+    }
+    await assertDeniedCrud(unauth, 'presentationFunnelEvents/new_evt', funnelPayload)
+    await assertDeniedCrud(owner, 'presentationFunnelEvents/booking_completed_m1', funnelPayload)
+    await assertDeniedCrud(stranger, 'presentationFunnelEvents/booking_completed_m1', funnelPayload)
+    await assertDeniedCrud(admin, 'presentationFunnelEvents/booking_completed_m1', funnelPayload)
+    console.log('PASS presentationFunnelEvents DENY CRUD (unauth/owner/stranger/admin)')
 
     // Public direct access to meetings/prospects still denied for unauth
     await assertFails(unauth.doc('meetings/m_private').get())
