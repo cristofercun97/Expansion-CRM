@@ -10,10 +10,8 @@ import {
   useAgendaOverlapCompact,
 } from '@/features/agenda/utils/agendaTimedEventLayout'
 import {
-  AGENDA_DAY_HOURS,
-  AGENDA_GRID_END_HOUR,
-  AGENDA_GRID_START_HOUR,
   AGENDA_HOUR_PX,
+  resolveAgendaVisibleHourRange,
 } from '@/features/agenda/utils/agendaCalendarUi'
 import { addMinutes, isSameDay, startOfDay, timestampToDate } from '@/features/agenda/utils/meetingDateUtils'
 import { cn } from '@/lib/utils'
@@ -41,11 +39,36 @@ export type AgendaCalendarWeekViewProps = {
 export function AgendaCalendarWeekView(props: AgendaCalendarWeekViewProps) {
   const { weekDays, selectedDay, onSelectDay } = props
   const today = new Date()
-  const gridHeight = (AGENDA_GRID_END_HOUR - AGENDA_GRID_START_HOUR) * AGENDA_HOUR_PX
   const compact = useAgendaOverlapCompact()
 
+  const weekInputs = useMemo(() => {
+    if (props.mode === 'personal') {
+      return props.meetings.flatMap((meeting) => {
+        const start = timestampToDate(meeting.startAt)
+        if (!start) return []
+        const end =
+          timestampToDate(meeting.endAt) || addMinutes(start, meeting.durationMinutes || 30)
+        return [{ id: meeting.id, startMs: start.getTime(), endMs: end.getTime() }]
+      })
+    }
+    return props.slots.map((slot) => ({
+      id: `${slot.meetingId}-${slot.memberUid}`,
+      startMs: new Date(slot.startAt).getTime(),
+      endMs: new Date(slot.endAt).getTime(),
+    }))
+  }, [props])
+
+  // Shared range for ALL week columns (one early event expands every day).
+  const hourRange = useMemo(() => resolveAgendaVisibleHourRange(weekInputs), [weekInputs])
+  const gridHeight = (hourRange.endHour - hourRange.startHour) * AGENDA_HOUR_PX
+
   return (
-    <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
+    <div
+      className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]"
+      data-testid="agenda-week-grid"
+      data-grid-start-hour={hourRange.startHour}
+      data-grid-end-hour={hourRange.endHour}
+    >
       <div className="overflow-x-auto overscroll-x-contain">
         <div className="min-w-[720px] lg:min-w-0">
           <div className="grid grid-cols-[52px_repeat(7,minmax(0,1fr))] border-b border-white/10 bg-white/[0.04]">
@@ -87,11 +110,11 @@ export function AgendaCalendarWeekView(props: AgendaCalendarWeekViewProps) {
 
           <div className="grid grid-cols-[52px_repeat(7,minmax(0,1fr))]">
             <div className="relative border-r border-white/8" style={{ height: gridHeight }}>
-              {AGENDA_DAY_HOURS.map((hour) => (
+              {hourRange.hourLabels.map((hour) => (
                 <div
                   key={hour}
                   className="absolute right-1 -translate-y-1/2 text-[10px] tabular-nums text-hero-text/40"
-                  style={{ top: (hour - AGENDA_GRID_START_HOUR) * AGENDA_HOUR_PX }}
+                  style={{ top: (hour - hourRange.startHour) * AGENDA_HOUR_PX }}
                 >
                   {String(hour).padStart(2, '0')}:00
                 </div>
@@ -106,6 +129,8 @@ export function AgendaCalendarWeekView(props: AgendaCalendarWeekViewProps) {
                 isSelected={selectedDay ? isSameDay(day, selectedDay) : false}
                 gridHeight={gridHeight}
                 compact={compact}
+                gridStartHour={hourRange.startHour}
+                gridEndHour={hourRange.endHour}
                 onSelectDay={onSelectDay}
                 props={props}
               />
@@ -123,6 +148,8 @@ function DayColumn({
   isSelected,
   gridHeight,
   compact,
+  gridStartHour,
+  gridEndHour,
   onSelectDay,
   props,
 }: {
@@ -131,6 +158,8 @@ function DayColumn({
   isSelected: boolean
   gridHeight: number
   compact: boolean
+  gridStartHour: number
+  gridEndHour: number
   onSelectDay: (day: Date) => void
   props: AgendaCalendarWeekViewProps
 }) {
@@ -149,7 +178,11 @@ function DayColumn({
         return [{ id: meeting.id, startMs: start.getTime(), endMs: end.getTime() }]
       })
 
-      const layouts = layoutTimedEvents(inputs, { compact })
+      const layouts = layoutTimedEvents(inputs, {
+        compact,
+        gridStartHour,
+        gridEndHour,
+      })
       const layoutById = new Map(layouts.map((item) => [item.id, item]))
 
       return dayMeetings.flatMap((meeting) => {
@@ -175,7 +208,11 @@ function DayColumn({
       startMs: new Date(slot.startAt).getTime(),
       endMs: new Date(slot.endAt).getTime(),
     }))
-    const layouts = layoutTimedEvents(inputs, { compact })
+    const layouts = layoutTimedEvents(inputs, {
+      compact,
+      gridStartHour,
+      gridEndHour,
+    })
     const layoutById = new Map(layouts.map((item) => [item.id, item]))
 
     return daySlots.flatMap((slot) => {
@@ -198,7 +235,7 @@ function DayColumn({
         },
       ]
     })
-  }, [compact, day, onSelectDay, props])
+  }, [compact, day, gridEndHour, gridStartHour, onSelectDay, props])
 
   return (
     <div
@@ -208,6 +245,8 @@ function DayColumn({
         isToday && !isSelected && 'bg-teal-accent/[0.04]',
       )}
       style={{ height: gridHeight }}
+      data-testid="agenda-week-day-column"
+      data-grid-start-hour={gridStartHour}
       onClick={() => onSelectDay(startOfDay(day))}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
@@ -218,13 +257,15 @@ function DayColumn({
       role="button"
       tabIndex={0}
     >
-      {AGENDA_DAY_HOURS.map((hour) => (
-        <div
-          key={hour}
-          className="pointer-events-none absolute inset-x-0 border-t border-white/[0.06]"
-          style={{ top: (hour - AGENDA_GRID_START_HOUR) * AGENDA_HOUR_PX }}
-        />
-      ))}
+      {Array.from({ length: gridEndHour - gridStartHour }, (_, i) => gridStartHour + i).map(
+        (hour) => (
+          <div
+            key={hour}
+            className="pointer-events-none absolute inset-x-0 border-t border-white/[0.06]"
+            style={{ top: (hour - gridStartHour) * AGENDA_HOUR_PX }}
+          />
+        ),
+      )}
 
       {events.map((event) => (
         <AgendaTimedEventBlock key={event.key} event={event} compact={compact} size="week" />

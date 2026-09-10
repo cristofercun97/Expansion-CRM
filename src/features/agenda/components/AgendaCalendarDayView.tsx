@@ -14,11 +14,9 @@ import {
 import type { Meeting } from '@/features/agenda/types/meeting.types'
 import type { TeamAgendaSlot } from '@/features/agenda/services/team-agenda-functions.service'
 import {
-  AGENDA_DAY_HOURS,
-  AGENDA_GRID_END_HOUR,
-  AGENDA_GRID_START_HOUR,
   AGENDA_HOUR_PX,
   formatDayHeading,
+  resolveAgendaVisibleHourRange,
 } from '@/features/agenda/utils/agendaCalendarUi'
 import { addMinutes, timestampToDate } from '@/features/agenda/utils/meetingDateUtils'
 
@@ -43,21 +41,41 @@ export type AgendaCalendarDayViewProps = {
 
 export function AgendaCalendarDayView(props: AgendaCalendarDayViewProps) {
   const { day } = props
-  const gridHeight = (AGENDA_GRID_END_HOUR - AGENDA_GRID_START_HOUR) * AGENDA_HOUR_PX
   const compact = useAgendaOverlapCompact()
   const count = props.mode === 'personal' ? props.meetings.length : props.slots.length
 
-  const timedEvents = useMemo((): TimedEventBlockModel[] => {
+  const timedInputs = useMemo(() => {
     if (props.mode === 'personal') {
-      const inputs = props.meetings.flatMap((meeting) => {
+      return props.meetings.flatMap((meeting) => {
         const start = timestampToDate(meeting.startAt)
         if (!start) return []
         const end =
           timestampToDate(meeting.endAt) || addMinutes(start, meeting.durationMinutes || 30)
         return [{ id: meeting.id, startMs: start.getTime(), endMs: end.getTime() }]
       })
-      const layouts = layoutTimedEvents(inputs, { compact })
-      const byId = new Map(layouts.map((item) => [item.id, item]))
+    }
+    return props.slots.map((slot) => ({
+      id: `${slot.meetingId}-${slot.memberUid}`,
+      startMs: new Date(slot.startAt).getTime(),
+      endMs: new Date(slot.endAt).getTime(),
+    }))
+  }, [props])
+
+  const hourRange = useMemo(
+    () => resolveAgendaVisibleHourRange(timedInputs),
+    [timedInputs],
+  )
+  const gridHeight = (hourRange.endHour - hourRange.startHour) * AGENDA_HOUR_PX
+
+  const timedEvents = useMemo((): TimedEventBlockModel[] => {
+    const layouts = layoutTimedEvents(timedInputs, {
+      compact,
+      gridStartHour: hourRange.startHour,
+      gridEndHour: hourRange.endHour,
+    })
+    const byId = new Map(layouts.map((item) => [item.id, item]))
+
+    if (props.mode === 'personal') {
       return props.meetings.flatMap((meeting) => {
         const start = timestampToDate(meeting.startAt)
         const layout = byId.get(meeting.id)
@@ -75,13 +93,6 @@ export function AgendaCalendarDayView(props: AgendaCalendarDayViewProps) {
       })
     }
 
-    const inputs = props.slots.map((slot) => ({
-      id: `${slot.meetingId}-${slot.memberUid}`,
-      startMs: new Date(slot.startAt).getTime(),
-      endMs: new Date(slot.endAt).getTime(),
-    }))
-    const layouts = layoutTimedEvents(inputs, { compact })
-    const byId = new Map(layouts.map((item) => [item.id, item]))
     return props.slots.flatMap((slot) => {
       const key = `${slot.meetingId}-${slot.memberUid}`
       const layout = byId.get(key)
@@ -101,7 +112,7 @@ export function AgendaCalendarDayView(props: AgendaCalendarDayViewProps) {
         },
       ]
     })
-  }, [compact, props])
+  }, [compact, hourRange.endHour, hourRange.startHour, props, timedInputs])
 
   if (count === 0) {
     return (
@@ -128,26 +139,35 @@ export function AgendaCalendarDayView(props: AgendaCalendarDayViewProps) {
         </p>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
+      <div
+        className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]"
+        data-testid="agenda-day-grid"
+        data-grid-start-hour={hourRange.startHour}
+        data-grid-end-hour={hourRange.endHour}
+      >
         <div className="grid grid-cols-[56px_minmax(0,1fr)]">
           <div className="relative border-r border-white/8" style={{ height: gridHeight }}>
-            {AGENDA_DAY_HOURS.map((hour) => (
+            {hourRange.hourLabels.map((hour) => (
               <div
                 key={hour}
                 className="absolute right-1.5 -translate-y-1/2 text-[11px] tabular-nums text-hero-text/40"
-                style={{ top: (hour - AGENDA_GRID_START_HOUR) * AGENDA_HOUR_PX }}
+                style={{ top: (hour - hourRange.startHour) * AGENDA_HOUR_PX }}
               >
                 {String(hour).padStart(2, '0')}:00
               </div>
             ))}
           </div>
 
-          <div className="relative overflow-hidden" style={{ height: gridHeight }}>
-            {AGENDA_DAY_HOURS.map((hour) => (
+          <div
+            className="relative overflow-hidden"
+            style={{ height: gridHeight }}
+            data-testid="agenda-day-events"
+          >
+            {hourRange.hourLabels.map((hour) => (
               <div
                 key={hour}
                 className="pointer-events-none absolute inset-x-0 border-t border-white/[0.06]"
-                style={{ top: (hour - AGENDA_GRID_START_HOUR) * AGENDA_HOUR_PX }}
+                style={{ top: (hour - hourRange.startHour) * AGENDA_HOUR_PX }}
               />
             ))}
 

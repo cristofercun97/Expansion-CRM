@@ -31,6 +31,12 @@ export function AgendaTimedEventBlock({
   return (
     <button
       type="button"
+      data-meeting-id={event.key}
+      data-testid={`agenda-event-${event.key}`}
+      data-start-ms={String(event.start.getTime())}
+      data-top={String(event.layout.top)}
+      data-column-index={String(event.layout.columnIndex)}
+      data-column-count={String(event.layout.columnCount)}
       onClick={(clickEvent) => {
         clickEvent.stopPropagation()
         event.onOpen()
