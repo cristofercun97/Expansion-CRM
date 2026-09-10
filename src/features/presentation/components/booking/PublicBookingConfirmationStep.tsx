@@ -29,7 +29,7 @@ export function PublicBookingConfirmationStep({
 
       <div className="pb-summary" data-testid="booking-summary">
         <div className="pb-summary-row">
-          <span className="pb-summary-k">Coach</span>
+          <span className="pb-summary-k">Con quién te reúnes</span>
           <p className="pb-summary-v">{professionalName}</p>
         </div>
         <div className="pb-summary-row">
