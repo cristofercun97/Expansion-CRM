@@ -16,6 +16,44 @@ export const AGENDA_DAY_HOURS = Array.from(
   (_, i) => AGENDA_DEFAULT_START_HOUR + i,
 )
 
+/** Controlled calendar viewport: page stays compact; hours scroll inside. */
+export const AGENDA_CALENDAR_VIEWPORT_CLASS =
+  'max-h-[clamp(400px,58vh,640px)] overflow-y-auto overscroll-y-contain agenda-calendar-scroll sm:max-h-[clamp(520px,65vh,720px)]'
+
+/**
+ * Initial scrollTop so the first meeting (or "now") is visible with ~1h of lead context.
+ */
+export function resolveAgendaInitialScrollTop(options: {
+  gridStartHour: number
+  gridEndHour: number
+  earliestStartMs?: number | null
+  nowMs?: number
+  hourPx?: number
+  leadHours?: number
+  viewportHeightPx?: number
+}): number {
+  const hourPx = options.hourPx ?? AGENDA_HOUR_PX
+  const leadHours = options.leadHours ?? 1
+  const gridHeight = Math.max(0, options.gridEndHour - options.gridStartHour) * hourPx
+  const viewportHeight = options.viewportHeightPx ?? Math.min(720, gridHeight)
+  const maxScroll = Math.max(0, gridHeight - viewportHeight)
+
+  let targetHour = options.gridStartHour
+  if (options.earliestStartMs != null && Number.isFinite(options.earliestStartMs)) {
+    const start = new Date(options.earliestStartMs)
+    targetHour = start.getHours() + start.getMinutes() / 60
+  } else {
+    const now = new Date(options.nowMs ?? Date.now())
+    const nowHour = now.getHours() + now.getMinutes() / 60
+    if (nowHour >= options.gridStartHour && nowHour < options.gridEndHour) {
+      targetHour = nowHour
+    }
+  }
+
+  const scrollTop = (targetHour - options.gridStartHour - leadHours) * hourPx
+  return Math.max(0, Math.min(maxScroll, scrollTop))
+}
+
 export type AgendaVisibleHourRange = {
   startHour: number
   /** Exclusive end hour (grid ends at this clock hour). */

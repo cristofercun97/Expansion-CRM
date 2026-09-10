@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useLayoutEffect, useMemo, useRef } from 'react'
 import { CalendarDays } from 'lucide-react'
 import { EmptyState } from '@/components/ui'
 import { MeetingCard } from '@/features/agenda/components/MeetingCard'
@@ -14,11 +14,14 @@ import {
 import type { Meeting } from '@/features/agenda/types/meeting.types'
 import type { TeamAgendaSlot } from '@/features/agenda/services/team-agenda-functions.service'
 import {
+  AGENDA_CALENDAR_VIEWPORT_CLASS,
   AGENDA_HOUR_PX,
   formatDayHeading,
+  resolveAgendaInitialScrollTop,
   resolveAgendaVisibleHourRange,
 } from '@/features/agenda/utils/agendaCalendarUi'
-import { addMinutes, timestampToDate } from '@/features/agenda/utils/meetingDateUtils'
+import { addMinutes, startOfDay, timestampToDate } from '@/features/agenda/utils/meetingDateUtils'
+import { cn } from '@/lib/utils'
 
 type PersonalProps = {
   mode: 'personal'
@@ -42,6 +45,7 @@ export type AgendaCalendarDayViewProps = {
 export function AgendaCalendarDayView(props: AgendaCalendarDayViewProps) {
   const { day } = props
   const compact = useAgendaOverlapCompact()
+  const viewportRef = useRef<HTMLDivElement>(null)
   const count = props.mode === 'personal' ? props.meetings.length : props.slots.length
 
   const timedInputs = useMemo(() => {
@@ -66,6 +70,10 @@ export function AgendaCalendarDayView(props: AgendaCalendarDayViewProps) {
     [timedInputs],
   )
   const gridHeight = (hourRange.endHour - hourRange.startHour) * AGENDA_HOUR_PX
+  const earliestStartMs = useMemo(() => {
+    if (timedInputs.length === 0) return null
+    return Math.min(...timedInputs.map((event) => event.startMs))
+  }, [timedInputs])
 
   const timedEvents = useMemo((): TimedEventBlockModel[] => {
     const layouts = layoutTimedEvents(timedInputs, {
@@ -114,6 +122,19 @@ export function AgendaCalendarDayView(props: AgendaCalendarDayViewProps) {
     })
   }, [compact, hourRange.endHour, hourRange.startHour, props, timedInputs])
 
+  const dayAnchorMs = startOfDay(day).getTime()
+
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+    viewport.scrollTop = resolveAgendaInitialScrollTop({
+      gridStartHour: hourRange.startHour,
+      gridEndHour: hourRange.endHour,
+      earliestStartMs,
+      viewportHeightPx: viewport.clientHeight,
+    })
+  }, [dayAnchorMs, earliestStartMs, hourRange.endHour, hourRange.startHour])
+
   if (count === 0) {
     return (
       <EmptyState
@@ -140,12 +161,20 @@ export function AgendaCalendarDayView(props: AgendaCalendarDayViewProps) {
       </div>
 
       <div
-        className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]"
-        data-testid="agenda-day-grid"
+        ref={viewportRef}
+        className={cn(
+          'rounded-2xl border border-white/10 bg-white/[0.03]',
+          AGENDA_CALENDAR_VIEWPORT_CLASS,
+        )}
+        data-testid="agenda-day-viewport"
         data-grid-start-hour={hourRange.startHour}
         data-grid-end-hour={hourRange.endHour}
       >
-        <div className="grid grid-cols-[56px_minmax(0,1fr)]">
+        <div
+          className="grid grid-cols-[56px_minmax(0,1fr)]"
+          data-testid="agenda-day-grid"
+          style={{ minHeight: gridHeight }}
+        >
           <div className="relative border-r border-white/8" style={{ height: gridHeight }}>
             {hourRange.hourLabels.map((hour) => (
               <div

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useLayoutEffect, useMemo, useRef } from 'react'
 import type { Meeting } from '@/features/agenda/types/meeting.types'
 import type { TeamAgendaSlot } from '@/features/agenda/services/team-agenda-functions.service'
 import {
@@ -10,7 +10,9 @@ import {
   useAgendaOverlapCompact,
 } from '@/features/agenda/utils/agendaTimedEventLayout'
 import {
+  AGENDA_CALENDAR_VIEWPORT_CLASS,
   AGENDA_HOUR_PX,
+  resolveAgendaInitialScrollTop,
   resolveAgendaVisibleHourRange,
 } from '@/features/agenda/utils/agendaCalendarUi'
 import { addMinutes, isSameDay, startOfDay, timestampToDate } from '@/features/agenda/utils/meetingDateUtils'
@@ -40,6 +42,7 @@ export function AgendaCalendarWeekView(props: AgendaCalendarWeekViewProps) {
   const { weekDays, selectedDay, onSelectDay } = props
   const today = new Date()
   const compact = useAgendaOverlapCompact()
+  const viewportRef = useRef<HTMLDivElement>(null)
 
   const weekInputs = useMemo(() => {
     if (props.mode === 'personal') {
@@ -61,6 +64,22 @@ export function AgendaCalendarWeekView(props: AgendaCalendarWeekViewProps) {
   // Shared range for ALL week columns (one early event expands every day).
   const hourRange = useMemo(() => resolveAgendaVisibleHourRange(weekInputs), [weekInputs])
   const gridHeight = (hourRange.endHour - hourRange.startHour) * AGENDA_HOUR_PX
+  const earliestStartMs = useMemo(() => {
+    if (weekInputs.length === 0) return null
+    return Math.min(...weekInputs.map((event) => event.startMs))
+  }, [weekInputs])
+  const weekAnchorMs = weekDays[0] ? startOfDay(weekDays[0]).getTime() : 0
+
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+    viewport.scrollTop = resolveAgendaInitialScrollTop({
+      gridStartHour: hourRange.startHour,
+      gridEndHour: hourRange.endHour,
+      earliestStartMs,
+      viewportHeightPx: viewport.clientHeight,
+    })
+  }, [earliestStartMs, hourRange.endHour, hourRange.startHour, weekAnchorMs])
 
   return (
     <div
@@ -69,10 +88,18 @@ export function AgendaCalendarWeekView(props: AgendaCalendarWeekViewProps) {
       data-grid-start-hour={hourRange.startHour}
       data-grid-end-hour={hourRange.endHour}
     >
-      <div className="overflow-x-auto overscroll-x-contain">
+      {/* Single scrollport: vertical hours + horizontal week (mobile). Day headers stick. */}
+      <div
+        ref={viewportRef}
+        className={cn(AGENDA_CALENDAR_VIEWPORT_CLASS, 'overflow-x-auto overscroll-x-contain')}
+        data-testid="agenda-week-viewport"
+      >
         <div className="min-w-[720px] lg:min-w-0">
-          <div className="grid grid-cols-[52px_repeat(7,minmax(0,1fr))] border-b border-white/10 bg-white/[0.04]">
-            <div className="border-r border-white/8" />
+          <div
+            className="sticky top-0 z-20 grid grid-cols-[52px_repeat(7,minmax(0,1fr))] border-b border-white/10 bg-petrol-deep/95 backdrop-blur-sm"
+            data-testid="agenda-week-day-headers"
+          >
+            <div className="border-r border-white/8 bg-petrol-deep/95" />
             {weekDays.map((day) => {
               const isToday = isSameDay(day, today)
               const isSelected = selectedDay ? isSameDay(day, selectedDay) : false
@@ -82,7 +109,7 @@ export function AgendaCalendarWeekView(props: AgendaCalendarWeekViewProps) {
                   type="button"
                   onClick={() => onSelectDay(startOfDay(day))}
                   className={cn(
-                    'border-r border-white/8 px-1 py-2.5 text-center last:border-r-0',
+                    'border-r border-white/8 bg-petrol-deep/95 px-1 py-2.5 text-center last:border-r-0',
                     isSelected && 'bg-gold/10',
                     isToday && !isSelected && 'bg-teal-accent/5',
                   )}
