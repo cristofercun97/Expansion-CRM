@@ -11,6 +11,11 @@ import {
   formatFreeSessionDurationLabel,
   PRESENTATION_FREE_SESSION_AVAILABILITY_COPY,
   PRESENTATION_FREE_SESSION_CTA_DEFAULT,
+  PRESENTATION_FREE_SESSION_DESCRIPTION_DEFAULT,
+  PRESENTATION_FREE_SESSION_TITLE_DEFAULT,
+  resolveFreeSessionCtaText,
+  resolveFreeSessionDescription,
+  resolveFreeSessionTitle,
 } from '../src/features/presentation/constants/presentationDefaults.ts'
 import { PRESENTATION_EDITOR_SECTIONS } from '../src/features/presentation/constants/presentationSectionGuides.ts'
 import { resolvePresentationBookingCta } from '../src/features/presentation/utils/bookingFunnelMetrics.ts'
@@ -107,7 +112,7 @@ const mappers = read('src/features/presentation/utils/presentationMappers.ts')
 {
   assert.match(landing, /ENCUENTRO GRATUITO/)
   assert.match(landing, /encuentro-gratuito/)
-  assert.match(landing, /PRESENTATION_FREE_SESSION_CTA_DEFAULT|Reservar mi encuentro gratuito/)
+  assert.match(landing, /freeSessionCta|resolveFreeSessionCtaText/)
   assert.match(defaults, /Reservar mi encuentro gratuito/)
   assert.equal(PRESENTATION_EDITOR_SECTIONS.leadMagnet.badge, 'Encuentro gratuito')
   assert.equal(PRESENTATION_FREE_SESSION_CTA_DEFAULT, 'Reservar mi encuentro gratuito')
@@ -119,7 +124,7 @@ const mappers = read('src/features/presentation/utils/presentationMappers.ts')
 {
   assert.match(mappers, /resourceUrl: str\(data\.leadMagnet\?\.resourceUrl\)/)
   assert.match(mappers, /leadMagnet: form\.leadMagnet/)
-  assert.match(mappers, /ctaText: str\(data\.leadMagnet\?\.ctaText/)
+  assert.match(mappers, /ctaText: resolveFreeSessionCtaText/)
   // Mapper keeps legacy resourceUrl; public CTA ignores it when booking disabled.
   const legacyCta = resolvePresentationBookingCta({
     bookingEnabled: false,
@@ -136,6 +141,65 @@ const mappers = read('src/features/presentation/utils/presentationMappers.ts')
   assert.match(landing, /overflow-x-hidden/)
   assert.match(landing, /max-w-full|max-w-sm|max-w-2xl/)
   pass('FREE-10')
+}
+
+// LEGACY-01 — CTA antiguo “Descargar guía”
+{
+  assert.equal(resolveFreeSessionCtaText('Descargar guía'), PRESENTATION_FREE_SESSION_CTA_DEFAULT)
+  assert.equal(resolveFreeSessionCtaText('Descargar recurso'), PRESENTATION_FREE_SESSION_CTA_DEFAULT)
+  assert.equal(resolveFreeSessionCtaText(''), PRESENTATION_FREE_SESSION_CTA_DEFAULT)
+  assert.match(mappers, /resolveFreeSessionCtaText/)
+  assert.match(landing, /resolveFreeSessionCtaText|freeSessionCta/)
+  pass('LEGACY-01')
+}
+
+// LEGACY-02 — CTA personalizado se conserva
+{
+  assert.equal(resolveFreeSessionCtaText('Quiero hablar contigo'), 'Quiero hablar contigo')
+  assert.equal(
+    resolveFreeSessionCtaText('Agenda una llamada conmigo'),
+    'Agenda una llamada conmigo',
+  )
+  pass('LEGACY-02')
+}
+
+// LEGACY-03 — nueva presentación → nuevos defaults
+{
+  assert.equal(defaultPresentationFormState.leadMagnet.ctaText, PRESENTATION_FREE_SESSION_CTA_DEFAULT)
+  assert.equal(defaultPresentationFormState.leadMagnet.title, PRESENTATION_FREE_SESSION_TITLE_DEFAULT)
+  assert.equal(
+    defaultPresentationFormState.leadMagnet.description,
+    PRESENTATION_FREE_SESSION_DESCRIPTION_DEFAULT,
+  )
+  pass('LEGACY-03')
+}
+
+// LEGACY-04 — title/description default incompatible → nuevo default
+{
+  assert.equal(resolveFreeSessionTitle('Recurso gratuito'), PRESENTATION_FREE_SESSION_TITLE_DEFAULT)
+  assert.equal(resolveFreeSessionTitle('Descarga mi guía'), PRESENTATION_FREE_SESSION_TITLE_DEFAULT)
+  assert.equal(
+    resolveFreeSessionDescription('Obtén este recurso'),
+    PRESENTATION_FREE_SESSION_DESCRIPTION_DEFAULT,
+  )
+  assert.equal(resolveFreeSessionTitle(''), PRESENTATION_FREE_SESSION_TITLE_DEFAULT)
+  assert.match(mappers, /resolveFreeSessionTitle/)
+  assert.match(mappers, /resolveFreeSessionDescription/)
+  pass('LEGACY-04')
+}
+
+// LEGACY-05 — contenido personalizado antiguo NO sobrescrito
+{
+  assert.equal(
+    resolveFreeSessionTitle('Sesión estratégica para tu equipo'),
+    'Sesión estratégica para tu equipo',
+  )
+  assert.equal(
+    resolveFreeSessionDescription('Hablemos de tu caso concreto en 30 minutos.'),
+    'Hablemos de tu caso concreto en 30 minutos.',
+  )
+  assert.doesNotMatch(defaults, /migrate.*leadMagnet|batchUpdate.*leadMagnet/i)
+  pass('LEGACY-05')
 }
 
 console.log('PRESENTACIÓN — Encuentro gratuito tests: ALL PASS')

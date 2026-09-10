@@ -5,7 +5,9 @@ import {
   formatFreeSessionDurationLabel,
   getPresentationFormPreviewField,
   PRESENTATION_FREE_SESSION_AVAILABILITY_COPY,
-  PRESENTATION_FREE_SESSION_CTA_DEFAULT,
+  resolveFreeSessionCtaText,
+  resolveFreeSessionDescription,
+  resolveFreeSessionTitle,
 } from '@/features/presentation/constants/presentationDefaults'
 import { PRESENTATION_EDITOR_SECTIONS } from '@/features/presentation/constants/presentationSectionGuides'
 import {
@@ -271,6 +273,11 @@ export function PresentationPreviewLanding({ form, publicContext }: Presentation
     landingSlug: publicContext?.landingSlug,
     resourceUrl: form.leadMagnet.resourceUrl,
   })
+  const freeSessionTitle = resolveFreeSessionTitle(
+    form.leadMagnet.title?.trim() || form.booking.title?.trim() || '',
+  )
+  const freeSessionDescription = resolveFreeSessionDescription(form.leadMagnet.description)
+  const freeSessionCta = resolveFreeSessionCtaText(form.leadMagnet.ctaText)
 
   useEffect(() => {
     if (!publicContext?.landingSlug) return
@@ -357,18 +364,16 @@ export function PresentationPreviewLanding({ form, publicContext }: Presentation
                 previewHeadingClasses(),
               )}
             >
-              {form.leadMagnet.title?.trim() ||
-                form.booking.title?.trim() ||
-                'Aclara tus dudas en una sesión gratuita de 30 minutos'}
+              {freeSessionTitle}
             </h2>
-            {form.leadMagnet.description?.trim() ? (
+            {freeSessionDescription ? (
               <p
                 className={cn(
                   'mt-3 max-w-xl text-base leading-relaxed sm:text-lg',
                   previewBodyClasses(),
                 )}
               >
-                {form.leadMagnet.description}
+                {freeSessionDescription}
               </p>
             ) : null}
             <p
@@ -398,7 +403,7 @@ export function PresentationPreviewLanding({ form, publicContext }: Presentation
                     })
                   }}
                 >
-                  {form.leadMagnet.ctaText?.trim() || PRESENTATION_FREE_SESSION_CTA_DEFAULT}
+                  {freeSessionCta}
                 </PreviewButton>
               </div>
             ) : null}

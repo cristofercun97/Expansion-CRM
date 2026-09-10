@@ -127,6 +127,66 @@ export const PRESENTATION_FREE_SESSION_AVAILABILITY_COPY =
 
 export const PRESENTATION_FREE_SESSION_CTA_DEFAULT = 'Reservar mi encuentro gratuito'
 
+export const PRESENTATION_FREE_SESSION_TITLE_DEFAULT =
+  'Aclara tus dudas en una sesión gratuita de 30 minutos'
+
+export const PRESENTATION_FREE_SESSION_DESCRIPTION_DEFAULT =
+  'Cuéntame en qué punto estás, qué te está frenando o qué necesitas resolver. Tendremos 30 minutos para escucharte, aclarar tus dudas y ayudarte a identificar cuál puede ser tu próximo paso.'
+
+/** Exact historical Lead Magnet CTA defaults — never overwrite custom owner CTAs. */
+export const LEGACY_LEAD_MAGNET_CTA_DEFAULTS = [
+  'Descargar guía',
+  'Descargar recurso',
+  'Obtener guía',
+  'Acceder al recurso',
+  'Agendar mi encuentro',
+] as const
+
+/** Exact historical / fallback titles incompatible with Encuentro gratuito. */
+export const LEGACY_LEAD_MAGNET_TITLE_DEFAULTS = [
+  'Recurso gratuito',
+  'Descarga mi guía',
+  'Obtén este recurso',
+  'Agenda un encuentro',
+] as const
+
+/** Exact historical descriptions incompatible with Encuentro gratuito. */
+export const LEGACY_LEAD_MAGNET_DESCRIPTION_DEFAULTS = [
+  'Descarga mi guía',
+  'Obtén este recurso',
+  'Guía, diagnóstico o clase gratuita.',
+  'Guía, diagnóstico o clase gratuita',
+] as const
+
+function isExactLegacyDefault(value: string, defaults: readonly string[]): boolean {
+  return defaults.includes(value)
+}
+
+/** Normalize CTA for display/editor load without mutating Firestore. */
+export function resolveFreeSessionCtaText(value?: string | null): string {
+  const trimmed = typeof value === 'string' ? value.trim() : ''
+  if (!trimmed || isExactLegacyDefault(trimmed, LEGACY_LEAD_MAGNET_CTA_DEFAULTS)) {
+    return PRESENTATION_FREE_SESSION_CTA_DEFAULT
+  }
+  return trimmed
+}
+
+export function resolveFreeSessionTitle(value?: string | null): string {
+  const trimmed = typeof value === 'string' ? value.trim() : ''
+  if (!trimmed || isExactLegacyDefault(trimmed, LEGACY_LEAD_MAGNET_TITLE_DEFAULTS)) {
+    return PRESENTATION_FREE_SESSION_TITLE_DEFAULT
+  }
+  return trimmed
+}
+
+export function resolveFreeSessionDescription(value?: string | null): string {
+  const trimmed = typeof value === 'string' ? value.trim() : ''
+  if (!trimmed || isExactLegacyDefault(trimmed, LEGACY_LEAD_MAGNET_DESCRIPTION_DEFAULTS)) {
+    return PRESENTATION_FREE_SESSION_DESCRIPTION_DEFAULT
+  }
+  return trimmed
+}
+
 export function formatFreeSessionDurationLabel(durationMinutes: number): string {
   const minutes = Number(durationMinutes) > 0 ? Math.floor(Number(durationMinutes)) : 30
   return `${minutes} minutos · Sin compromiso`

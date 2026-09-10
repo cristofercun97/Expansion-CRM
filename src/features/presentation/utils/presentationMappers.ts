@@ -1,5 +1,10 @@
 import type { DocumentData } from 'firebase/firestore'
-import { defaultPresentationFormState } from '@/features/presentation/constants/presentationDefaults'
+import {
+  defaultPresentationFormState,
+  resolveFreeSessionCtaText,
+  resolveFreeSessionDescription,
+  resolveFreeSessionTitle,
+} from '@/features/presentation/constants/presentationDefaults'
 import { mapBookingFunnelMetrics } from '@/features/presentation/utils/bookingFunnelMetrics'
 import type {
   PresentationContentItem,
@@ -198,9 +203,9 @@ export function mapDocumentToPresentationRecord(
       problem: mapTextSection(data.problem, defaults.problem),
       promise: mapTextSection(data.promise, defaults.promise),
       leadMagnet: {
-        title: str(data.leadMagnet?.title),
-        description: str(data.leadMagnet?.description),
-        ctaText: str(data.leadMagnet?.ctaText, defaults.leadMagnet.ctaText),
+        title: resolveFreeSessionTitle(str(data.leadMagnet?.title)),
+        description: resolveFreeSessionDescription(str(data.leadMagnet?.description)),
+        ctaText: resolveFreeSessionCtaText(str(data.leadMagnet?.ctaText)),
         resourceUrl: str(data.leadMagnet?.resourceUrl),
       },
       story: mapTextSection(data.story, defaults.story),
