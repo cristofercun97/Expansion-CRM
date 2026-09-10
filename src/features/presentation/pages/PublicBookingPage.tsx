@@ -60,6 +60,7 @@ export function PublicBookingPage() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [availabilityLoading, setAvailabilityLoading] = useState(false)
   const [availabilityError, setAvailabilityError] = useState('')
+  const [availabilityRateLimited, setAvailabilityRateLimited] = useState(false)
   const [professionalName, setProfessionalName] = useState('')
   const [photoUrl, setPhotoUrl] = useState('')
   const [brandName, setBrandName] = useState('')
@@ -77,6 +78,7 @@ export function PublicBookingPage() {
   const [clientRequestId] = useState(() => createClientRequestId())
   const [loadFailedNotFound, setLoadFailedNotFound] = useState(false)
   const [bookingDisabled, setBookingDisabled] = useState(false)
+  const [availabilityReloadToken, setAvailabilityReloadToken] = useState(0)
   const notFound = !slug || loadFailedNotFound
 
   const dateKeys = useMemo(() => Object.keys(dates).sort(), [dates])
@@ -93,6 +95,7 @@ export function PublicBookingPage() {
       if (cancelled) return
       setAvailabilityLoading(true)
       setAvailabilityError('')
+      setAvailabilityRateLimited(false)
     })
 
     void publicBookingService
@@ -107,7 +110,11 @@ export function PublicBookingPage() {
         )
         setPhotoUrl(professional?.avatarUrl?.trim() || '')
         setBrandName(professional?.brandName?.trim() || '')
-        setClaim(professional?.claim?.trim() || '')
+        setClaim(
+          professional?.headline?.trim() ||
+            professional?.claim?.trim() ||
+            '',
+        )
         setTimezone(availability.timezone)
         setDurationMinutes(availability.durationMinutes)
         setDates(availability.dates || {})
@@ -133,7 +140,15 @@ export function PublicBookingPage() {
         if (cancelled) return
         if (error.message === 'not-found') setLoadFailedNotFound(true)
         else if (error.message === 'booking_disabled') setBookingDisabled(true)
-        else setAvailabilityError('No pudimos cargar la disponibilidad. Inténtalo de nuevo.')
+        else if (error.message === 'rate_limited') {
+          setAvailabilityRateLimited(true)
+          setAvailabilityError(
+            'Estamos actualizando la disponibilidad. Inténtalo nuevamente en unos segundos.',
+          )
+        } else {
+          setAvailabilityRateLimited(false)
+          setAvailabilityError('No pudimos cargar la disponibilidad. Inténtalo de nuevo.')
+        }
       })
       .finally(() => {
         if (!cancelled) setAvailabilityLoading(false)
@@ -142,7 +157,12 @@ export function PublicBookingPage() {
     return () => {
       cancelled = true
     }
-  }, [slug])
+  }, [slug, availabilityReloadToken])
+
+  function retryAvailability() {
+    if (availabilityLoading) return
+    setAvailabilityReloadToken((token) => token + 1)
+  }
 
   function patchLead(patch: Partial<PublicBookingLeadInput>) {
     setLead((current) => ({ ...current, ...patch }))
@@ -269,9 +289,24 @@ export function PublicBookingPage() {
           {!showSuccess ? <PublicBookingStepper current={wizardStep} /> : null}
 
           {availabilityError ? (
-            <p className="pb-banner" data-tone="error" role="alert">
-              {availabilityError}
-            </p>
+            <div
+              className="pb-banner"
+              data-tone="error"
+              data-rate-limited={availabilityRateLimited ? 'true' : 'false'}
+              role="alert"
+            >
+              <p>{availabilityError}</p>
+              <button
+                type="button"
+                className="pb-btn pb-btn-secondary"
+                style={{ marginTop: '0.75rem' }}
+                disabled={availabilityLoading}
+                onClick={() => retryAvailability()}
+                data-testid="booking-availability-retry"
+              >
+                Reintentar
+              </button>
+            </div>
           ) : null}
 
           {showSuccess && confirmation ? (

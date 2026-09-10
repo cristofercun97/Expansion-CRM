@@ -6,6 +6,7 @@ export type PublicBookingProfessional = {
   displayName: string
   avatarUrl: string | null
   brandName: string | null
+  headline?: string | null
   claim: string | null
 }
 
@@ -57,9 +58,20 @@ function mapCallableError(error: unknown): Error {
     typeof error === 'object' && error && 'message' in error
       ? String((error as { message?: string }).message || '')
       : ''
+  const details =
+    typeof error === 'object' && error && 'details' in error
+      ? (error as { details?: { reason?: string } }).details
+      : undefined
 
   if (code.includes('not-found')) {
     return new Error('not-found')
+  }
+  if (
+    code.includes('resource-exhausted') ||
+    details?.reason === 'rate_limited' ||
+    message.toLowerCase().includes('demasiadas solicitudes')
+  ) {
+    return new Error('rate_limited')
   }
   if (
     message.toLowerCase().includes('no están disponibles') ||
@@ -90,18 +102,41 @@ function mapCallableError(error: unknown): Error {
   return new Error('temporary')
 }
 
+/** In-flight coalescing for identical availability queries (StrictMode / remounts). */
+const inflightAvailability = new Map<string, Promise<PublicBookingAvailability>>()
+
+/** Test/introspection helper — not used by UI. */
+export function __resetPublicBookingAvailabilityInflightForTests() {
+  inflightAvailability.clear()
+}
+
+export function __inflightAvailabilitySizeForTests() {
+  return inflightAvailability.size
+}
+
 async function getPublicBookingAvailability(input: {
   slug: string
   dateFrom: string
   dateTo: string
 }): Promise<PublicBookingAvailability> {
-  try {
-    const fn = httpsCallable(getExpansionFunctions(), 'getPublicBookingAvailability')
-    const result = await fn(input)
-    return result.data as PublicBookingAvailability
-  } catch (error) {
-    throw mapCallableError(error)
-  }
+  const key = `${input.slug}|${input.dateFrom}|${input.dateTo}`
+  const existing = inflightAvailability.get(key)
+  if (existing) return existing
+
+  const promise = (async () => {
+    try {
+      const fn = httpsCallable(getExpansionFunctions(), 'getPublicBookingAvailability')
+      const result = await fn(input)
+      return result.data as PublicBookingAvailability
+    } catch (error) {
+      throw mapCallableError(error)
+    } finally {
+      inflightAvailability.delete(key)
+    }
+  })()
+
+  inflightAvailability.set(key, promise)
+  return promise
 }
 
 async function createPublicBooking(input: {

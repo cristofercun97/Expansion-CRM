@@ -29,7 +29,16 @@ import {
   assertNoPiiInFunnelPayload,
   type PresentationFunnelEventKind,
 } from "./conversion.js";
-import {buildPublicBookingProfessional, type PublicBookingProfessional} from "./professionalMeta.js";
+import {
+  buildPublicBookingProfessional,
+  extractOwnerPublicProfileFields,
+  type PublicBookingProfessional,
+} from "./professionalMeta.js";
+import {
+  isRateLimitExceeded,
+  rateLimitDocId,
+  type BookingRateKind,
+} from "./rateLimit.js";
 
 const googleOAuthClientId = defineSecret("GOOGLE_OAUTH_CLIENT_ID");
 const googleOAuthClientSecret = defineSecret("GOOGLE_OAUTH_CLIENT_SECRET");
@@ -89,7 +98,14 @@ async function resolvePublishedPresentation(slug: string): Promise<{
     );
   }
 
-  const professional = buildPublicBookingProfessional(landing as Record<string, unknown>);
+  const ownerSnap = await db.collection(COLLECTIONS.users).doc(ownerUid).get();
+  const ownerFields = extractOwnerPublicProfileFields(
+    ownerSnap.exists ? (ownerSnap.data() as Record<string, unknown>) : null,
+  );
+  const professional = buildPublicBookingProfessional(
+    landing as Record<string, unknown>,
+    ownerFields,
+  );
   const brandName = professional.displayName;
 
   return {ownerUid, slug, brandName, booking, professional};
@@ -142,21 +158,28 @@ function fingerprint(request: {rawRequest?: {headers?: Record<string, unknown>; 
   return `ip_${ip}`.slice(0, 120);
 }
 
-async function assertRateLimit(fingerprintKey: string): Promise<void> {
-  const dayKey = new Date().toISOString().slice(0, 10);
+async function assertRateLimit(
+  fingerprintKey: string,
+  kind: BookingRateKind,
+): Promise<void> {
   const ref = getDefaultDb()
     .collection(COLLECTIONS.bookingRateLimits)
-    .doc(`${fingerprintKey}_${dayKey}`);
+    .doc(rateLimitDocId(fingerprintKey, kind));
   await getDefaultDb().runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     const count = Number(snap.data()?.count || 0);
-    if (count >= 40) {
-      throw new HttpsError("resource-exhausted", "Demasiadas solicitudes. Inténtalo más tarde.");
+    if (isRateLimitExceeded(count, kind)) {
+      throw new HttpsError(
+        "resource-exhausted",
+        "Demasiadas solicitudes. Inténtalo más tarde.",
+        {reason: "rate_limited"},
+      );
     }
     tx.set(
       ref,
       {
         count: count + 1,
+        kind,
         updatedAt: FieldValue.serverTimestamp(),
       },
       {merge: true},
@@ -256,7 +279,7 @@ async function findOrCreateProspect(input: {
 
 export const getPublicBookingAvailability = onCall(callableOptions, async (request) => {
   try {
-    await assertRateLimit(fingerprint(request));
+    await assertRateLimit(fingerprint(request), "availability");
     const input = sanitizeAvailabilityRequest(request.data);
     const presentation = await resolvePublishedPresentation(input.slug);
 
@@ -304,7 +327,7 @@ export const createPublicBooking = onCall(
   },
   async (request) => {
     try {
-      await assertRateLimit(fingerprint(request));
+      await assertRateLimit(fingerprint(request), "create");
       const input = sanitizeCreateBookingRequest(request.data);
       const presentation = await resolvePublishedPresentation(input.slug);
       const {booking, ownerUid, brandName} = presentation;
@@ -562,7 +585,7 @@ const FUNNEL_EVENT_KINDS = new Set<PresentationFunnelEventKind>([
 
 export const trackPresentationFunnelEvent = onCall(callableOptions, async (request) => {
   try {
-    await assertRateLimit(fingerprint(request));
+    await assertRateLimit(fingerprint(request), "funnel");
     const data =
       request.data && typeof request.data === "object" ?
         (request.data as Record<string, unknown>) :

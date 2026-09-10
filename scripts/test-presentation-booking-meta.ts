@@ -40,12 +40,14 @@ function read(rel: string) {
   assert.equal(professional.displayName, 'Estudio Norte')
   assert.equal(professional.avatarUrl, 'https://cdn.example.com/a.jpg')
   assert.equal(professional.brandName, 'Estudio Norte')
+  assert.equal(professional.headline, 'Sesión de claridad')
   assert.equal(professional.claim, 'Sesión de claridad')
   assertPublicProfessionalSafe({ professional })
 
   const handlers = read('functions/src/booking/handlers.ts')
   assert.ok(handlers.includes('professional: presentation.professional'))
   assert.ok(handlers.includes('buildPublicBookingProfessional'))
+  assert.ok(handlers.includes('extractOwnerPublicProfileFields'))
   pass('META-01')
 }
 
@@ -81,11 +83,9 @@ function read(rel: string) {
 // META-03 — invalid/inactive slug path does not leak metadata (contract)
 {
   const handlers = read('functions/src/booking/handlers.ts')
-  // resolve throws not-found before returning professional
   assert.ok(handlers.includes('Presentación no encontrada.'))
-  assert.ok(handlers.includes('Las reservas no están habilitadas.'))
+  assert.ok(handlers.includes('Las reservas no están disponibles'))
   assert.ok(handlers.includes('isPublished !== true'))
-  // professional is only returned after resolvePublishedPresentation succeeds
   const idxResolve = handlers.indexOf('const presentation = await resolvePublishedPresentation')
   const idxReturn = handlers.indexOf('professional: presentation.professional')
   assert.ok(idxResolve > 0 && idxReturn > idxResolve)
@@ -109,6 +109,7 @@ function read(rel: string) {
   const empty = buildPublicBookingProfessional({})
   assert.equal(empty.displayName, 'Profesional')
   assert.equal(empty.avatarUrl, null)
+  assert.equal(empty.headline, null)
   assert.equal(empty.claim, null)
   const badAvatar = buildPublicBookingProfessional({
     visualIdentity: { brandName: 'X', photoUrl: 'not-a-url' },
