@@ -247,6 +247,12 @@ export function PublicBookingPage() {
 
   return (
     <main className="pb-shell">
+      <header className="pb-brand-header">
+        <a href="/" className="pb-brand-mark" aria-label="EXPANSIÓN">
+          <span className="pb-brand-mark-text">EXPANSIÓN</span>
+        </a>
+        <p className="pb-brand-eyebrow">Reserva tu encuentro</p>
+      </header>
       <div className="pb-layout">
         <PublicBookingProfessionalCard
           name={professionalName || 'Profesional'}

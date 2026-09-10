@@ -182,8 +182,8 @@ function read(rel: string) {
 // Success + disabled route contracts
 {
   const success = read('src/features/presentation/components/booking/PublicBookingSuccess.tsx')
-  assert.match(success, /Cita confirmada/)
-  assert.match(success, /Tu encuentro está reservado/)
+  assert.match(success, /Tu encuentro está confirmado/)
+  assert.match(success, /Ya tienes reservado tu espacio/)
   assert.match(success, /Finalizar/)
   assert.match(success, /Volver a la presentación/)
 

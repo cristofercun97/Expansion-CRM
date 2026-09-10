@@ -50,7 +50,8 @@ const stepper = read('src/features/presentation/components/booking/PublicBooking
   assert.ok(utils.includes('Elige una fecha'))
   assert.ok(utils.includes('Elige una hora'))
   assert.ok(utils.includes('Confirma tu cita'))
-  assert.ok(stepper.includes('BOOKING_STEP_LABELS'))
+  assert.ok(utils.includes('BOOKING_STEPPER_LABELS'))
+  assert.ok(stepper.includes('BOOKING_STEPPER_LABELS'))
   assert.equal(stepStatus(1, 2), 'complete')
   assert.equal(stepStatus(2, 2), 'active')
   assert.equal(stepStatus(3, 2), 'pending')
@@ -118,8 +119,9 @@ const stepper = read('src/features/presentation/components/booking/PublicBooking
 
 // UI-08 — success state
 {
-  assert.ok(success.includes('Cita confirmada'))
-  assert.ok(success.includes('Tu encuentro ha sido reservado correctamente.'))
+  assert.ok(success.includes('Tu encuentro está confirmado'))
+  assert.ok(success.includes('Ya tienes reservado tu espacio.'))
+  assert.ok(success.includes('Volver a la presentación'))
   assert.ok(page.includes('PublicBookingSuccess'))
   assert.ok(page.includes('confirmation'))
   pass('UI-08')
@@ -133,6 +135,10 @@ const stepper = read('src/features/presentation/components/booking/PublicBooking
   assert.ok(css.includes('display: none'))
   assert.ok(css.includes('grid-template-columns: repeat(7, minmax(0, 1fr))'))
   assert.ok(details.includes('pb-btn-block'))
+  assert.ok(css.includes('--pb-teal-0') || css.includes('#022f34'))
+  assert.ok(css.includes('pb-btn-primary'))
+  assert.ok(!css.includes('--pb-cream: var(--color-bg-warm)'))
+  assert.ok(!css.includes('--pb-ink: #111111'))
   pass('UI-09')
 }
 

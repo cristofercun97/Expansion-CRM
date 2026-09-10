@@ -1,3 +1,4 @@
+import { PublicBookingSelect } from '@/features/presentation/components/booking/PublicBookingSelect'
 import {
   SESSION_OBJECTIVE_OPTIONS,
   SESSION_REASON_OPTIONS,
@@ -30,6 +31,18 @@ export function PublicBookingDetailsStep({
   onContinue,
 }: Props) {
   const messageLen = lead.message.length
+  const dialOptions = WHATSAPP_DIAL_CODES.map((item) => ({
+    value: item.code,
+    label: item.label,
+  }))
+  const reasonOptions = SESSION_REASON_OPTIONS.map((option) => ({
+    value: option,
+    label: option,
+  }))
+  const objectiveOptions = SESSION_OBJECTIVE_OPTIONS.map((option) => ({
+    value: option,
+    label: option,
+  }))
 
   return (
     <section data-testid="booking-step-1" aria-labelledby="booking-step1-title">
@@ -117,18 +130,12 @@ export function PublicBookingDetailsStep({
             WhatsApp
           </label>
           <div className="pb-wa">
-            <select
-              className="pb-select"
+            <PublicBookingSelect
               aria-label="Prefijo telefónico"
               value={dialCode}
-              onChange={(e) => onDialCodeChange(e.target.value)}
-            >
-              {WHATSAPP_DIAL_CODES.map((item) => (
-                <option key={item.code} value={item.code}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
+              options={dialOptions}
+              onChange={onDialCodeChange}
+            />
             <input
               id="pb-whatsapp"
               className="pb-input"
@@ -145,19 +152,14 @@ export function PublicBookingDetailsStep({
           <label className="pb-label" htmlFor="pb-reason">
             Motivo de la sesión *
           </label>
-          <select
+          <PublicBookingSelect
             id="pb-reason"
-            className="pb-select"
+            label="Motivo de la sesión"
             value={lead.sessionReason}
+            options={reasonOptions}
             aria-invalid={Boolean(fieldErrors.sessionReason)}
-            onChange={(e) => onLeadChange({ sessionReason: e.target.value })}
-          >
-            {SESSION_REASON_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => onLeadChange({ sessionReason: value })}
+          />
           {fieldErrors.sessionReason ? <p className="pb-error">{fieldErrors.sessionReason}</p> : null}
         </div>
 
@@ -165,19 +167,14 @@ export function PublicBookingDetailsStep({
           <label className="pb-label" htmlFor="pb-objective">
             Objetivo *
           </label>
-          <select
+          <PublicBookingSelect
             id="pb-objective"
-            className="pb-select"
+            label="Objetivo"
             value={lead.objective}
+            options={objectiveOptions}
             aria-invalid={Boolean(fieldErrors.objective)}
-            onChange={(e) => onLeadChange({ objective: e.target.value })}
-          >
-            {SESSION_OBJECTIVE_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => onLeadChange({ objective: value })}
+          />
           {fieldErrors.objective ? <p className="pb-error">{fieldErrors.objective}</p> : null}
         </div>
 

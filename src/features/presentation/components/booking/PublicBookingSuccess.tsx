@@ -24,10 +24,8 @@ export function PublicBookingSuccess({
       <div className="pb-success-icon" aria-hidden="true">
         ✓
       </div>
-      <h2 className="pb-title">Cita confirmada</h2>
-      <p style={{ margin: '0 0 1.25rem', color: 'var(--color-text-soft)' }}>
-        Tu encuentro está reservado. Guarda esta fecha y hora.
-      </p>
+      <h2 className="pb-title">Tu encuentro está confirmado</h2>
+      <p className="pb-success-sub">Ya tienes reservado tu espacio.</p>
       <div className="pb-summary" style={{ textAlign: 'left' }}>
         <div className="pb-summary-row">
           <span className="pb-summary-k">Profesional</span>
@@ -47,26 +45,40 @@ export function PublicBookingSuccess({
         </div>
       </div>
       <div style={{ marginTop: '1.5rem', display: 'grid', gap: '0.75rem' }}>
-        <button
-          type="button"
-          className="pb-btn pb-btn-primary"
-          data-testid="booking-success-finish"
-          onClick={() => {
-            if (onFinish) onFinish()
-            else if (typeof window !== 'undefined') window.location.assign('/')
-          }}
-        >
-          Finalizar
-        </button>
         {presentationHref ? (
           <a
             href={presentationHref}
-            className="pb-btn pb-btn-secondary"
+            className="pb-btn pb-btn-primary"
             data-testid="booking-success-return"
             style={{ textAlign: 'center' }}
           >
             Volver a la presentación
           </a>
+        ) : (
+          <button
+            type="button"
+            className="pb-btn pb-btn-primary"
+            data-testid="booking-success-finish"
+            onClick={() => {
+              if (onFinish) onFinish()
+              else if (typeof window !== 'undefined') window.location.assign('/')
+            }}
+          >
+            Finalizar
+          </button>
+        )}
+        {presentationHref ? (
+          <button
+            type="button"
+            className="pb-btn pb-btn-secondary"
+            data-testid="booking-success-finish"
+            onClick={() => {
+              if (onFinish) onFinish()
+              else if (typeof window !== 'undefined') window.location.assign('/')
+            }}
+          >
+            Finalizar
+          </button>
         ) : null}
       </div>
     </section>

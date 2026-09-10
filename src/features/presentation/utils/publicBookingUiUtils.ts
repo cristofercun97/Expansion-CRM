@@ -9,6 +9,9 @@ export const BOOKING_STEP_LABELS = [
   'Confirma tu cita',
 ] as const
 
+/** Compact stepper labels (visual only). Step page titles stay in BOOKING_STEP_LABELS. */
+export const BOOKING_STEPPER_LABELS = ['Datos', 'Fecha', 'Hora', 'Confirmación'] as const
+
 export type FieldErrors = Partial<
   Record<
     | 'firstName'
